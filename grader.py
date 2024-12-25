@@ -20,7 +20,10 @@ def install_requirements(venv_path):
     pip_path = venv_path / ("Scripts" if sys.platform == "win32" else "bin") / "pip"
     requirements_path = Path(__file__).parent / "requirements.txt"
     print("Installing dependencies...", flush=True)
-    subprocess.run([str(pip_path), "install", "-r", str(requirements_path)], check=True)
+    subprocess.run(
+        [str(pip_path), "install", "-r", str(requirements_path), "-i", "https://pypi.tuna.tsinghua.edu.cn/simple"],
+        check=True,
+    )
 
 
 def ensure_venv():
@@ -126,6 +129,11 @@ class Config:
     @property
     def setup_steps(self) -> List[Dict[str, Any]]:
         return self._config.get("setup", {}).get("steps", [])
+
+    @property
+    def groups(self) -> Dict[str, List[str]]:
+        """获取测试组配置"""
+        return self._config.get("groups", {})
 
 
 class OutputChecker(Protocol):
@@ -783,15 +791,15 @@ class Grader:
         self.results: Dict[str, TestResult] = {}
 
     def run_all_tests(
-        self, specific_test: Optional[str] = None, prefix_match: bool = False
+        self, specific_test: Optional[str] = None, prefix_match: bool = False, group: Optional[str] = None
     ):
         if not self._run_setup_steps():
             sys.exit(1)
 
-        test_cases = self._load_test_cases(specific_test, prefix_match)
+        test_cases = self._load_test_cases(specific_test, prefix_match, group)
         if not self.json_output:
             self.console.print(
-                f"\n[bold]Running {len(test_cases)} test cases...[/bold]\n"
+                f"\n[bold]Running {len(test_cases)} test cases{' in group ' + group if group else ''}...[/bold]\n"
             )
 
         total_score = 0
@@ -867,8 +875,32 @@ class Grader:
             return False
 
     def _load_test_cases(
-        self, specific_test: Optional[str] = None, prefix_match: bool = False
+        self, specific_test: Optional[str] = None, prefix_match: bool = False, group: Optional[str] = None
     ) -> List[TestCase]:
+        # 如果指定了组，则从组配置中获取测试点列表
+        if group:
+            if group not in self.config.groups:
+                if not self.json_output:
+                    self.console.print(f"[red]Error:[/red] Group '{group}' not found in config")
+                else:
+                    print(f"Error: Group '{group}' not found in config", file=sys.stderr)
+                sys.exit(1)
+            
+            test_cases = []
+            for test_id in self.config.groups[group]:
+                # 对每个测试点ID使用前缀匹配模式加载
+                cases = self._load_test_cases(test_id, True)
+                test_cases.extend(cases)
+            
+            if not test_cases:
+                if not self.json_output:
+                    self.console.print(f"[red]Error:[/red] No test cases found in group '{group}'")
+                else:
+                    print(f"Error: No test cases found in group '{group}'", file=sys.stderr)
+                sys.exit(1)
+            
+            return test_cases
+
         if specific_test:
             # 获取所有匹配的测试目录
             matching_tests = []
@@ -1011,18 +1043,22 @@ def main():
         action="store_true",
         help="Use number prefix exact matching mode for test case selection",
     )
+    parser.add_argument(
+        "--group",
+        help="Run all test cases in the specified group",
+    )
     parser.add_argument("test", nargs="?", help="Specific test to run")
     args = parser.parse_args()
 
     try:
         grader = Grader(json_output=args.json)
-        grader.run_all_tests(args.test, prefix_match=args.prefix)
+        grader.run_all_tests(args.test, prefix_match=args.prefix, group=args.group)
 
         # 检查是否所有测试都通过
         total_score = sum(result.score for result in grader.results.values())
         max_score = sum(
             test.meta["score"]
-            for test in grader._load_test_cases(args.test, args.prefix)
+            for test in grader._load_test_cases(args.test, args.prefix, args.group)
         )
         percentage = (total_score / max_score * 100) if max_score > 0 else 0
 

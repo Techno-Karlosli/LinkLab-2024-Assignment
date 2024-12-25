@@ -57,9 +57,22 @@ clean:
 test: all
 	python3 grader.py
 
-# 运行特定测试
-test_%: all
-	@echo "Running test $*..."
-	python3 grader.py --prefix $*
+test_1: all
+	python3 grader.py --group nm
 
-.PHONY: all clean test check_compiler
+test_2: all
+	python3 grader.py --group basic_linking
+
+test_3: all
+	python3 grader.py --group relative_reloc
+
+test_4: all
+	python3 grader.py --group symbol_resolution
+
+test_5: all
+	python3 grader.py --group addr64
+
+test_6: all
+	python3 grader.py --group section_perm
+
+.PHONY: all clean test check_compiler test_1 test_2 test_3 test_4 test_5 test_6
