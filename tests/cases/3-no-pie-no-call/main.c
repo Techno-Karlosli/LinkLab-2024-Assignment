@@ -1,5 +1,5 @@
 // Global variables for absolute addressing test
-int result = 0;
+int result = 1;
 
 const char str[] = "Hello, World!";
 

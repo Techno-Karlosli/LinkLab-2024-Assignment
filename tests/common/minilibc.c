@@ -109,6 +109,27 @@ int vsprintf(char* buf, const char* fmt, va_list ap)
                 }
                 break;
             }
+            case 'p': {
+                // 打印指针
+                unsigned long val = (unsigned long)va_arg(ap, void*);
+                *p++ = '0';
+                *p++ = 'x';
+
+                // 转换为16进制
+                char tmp[32];
+                char* t = tmp;
+                do {
+                    int digit = val & 0xf;
+                    *t++ = digit < 10 ? '0' + digit : 'a' + digit - 10;
+                    val >>= 4;
+                } while (val);
+
+                // 反转数字
+                while (t > tmp) {
+                    *p++ = *--t;
+                }
+                break;
+            }
             default:
                 *p++ = *fmt;
                 break;
