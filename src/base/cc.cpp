@@ -108,11 +108,11 @@ std::string format_symbol_line(const Symbol& sym)
 {
     switch (sym.binding) {
     case 'l':
-        return std::format("🏷️: {} {}", sym.name, sym.size);
+        return std::format("🏷️: {} {} {}", sym.name, sym.size, sym.offset);
     case 'g':
-        return std::format("📤: {} {}", sym.name, sym.size);
+        return std::format("📤: {} {} {}", sym.name, sym.size, sym.offset);
     case 'w':
-        return std::format("📎: {} {}", sym.name, sym.size);
+        return std::format("📎: {} {} {}", sym.name, sym.size, sym.offset);
     default:
         throw std::runtime_error(std::format("Unsupported symbol binding: {}", sym.binding));
     }
@@ -260,7 +260,7 @@ void FLE_cc(const std::vector<std::string>& options)
     gcc_cmd.insert(gcc_cmd.end(), COMPILER_FLAGS.begin(), COMPILER_FLAGS.end());
     gcc_cmd.insert(gcc_cmd.end(), options.begin(), options.end());
 
-    std::cerr << "running: " << join(gcc_cmd, " ") << "\n";
+    // std::cerr << "running: " << join(gcc_cmd, " ") << "\n";
 
     if (std::system(join(gcc_cmd, " ").c_str()) != 0) {
         throw std::runtime_error("gcc compilation failed");
@@ -289,7 +289,7 @@ void FLE_cc(const std::vector<std::string>& options)
 
         const std::string section_name = match[2];
 
-        std::cerr << "section_name: " << section_name << "\n";
+        // std::cerr << "section_name: " << section_name << "\n";
         const std::string flags_line = *++it;
 
         // 解析节标志

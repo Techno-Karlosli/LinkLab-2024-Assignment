@@ -90,7 +90,7 @@ FLEObject load_fle(const std::string& file)
         if (key == "type" || key == "entry" || key == "phdrs" || key == "shdrs")
             continue;
 
-        size_t current_offset = 0;
+        // size_t current_offset = 0;
         for (const auto& line : value) {
             std::string line_str = line.get<std::string>();
             size_t colon_pos = line_str.find(':');
@@ -101,13 +101,13 @@ FLEObject load_fle(const std::string& file)
                 std::stringstream ss(content);
                 uint32_t byte;
                 while (ss >> std::hex >> byte) {
-                    current_offset++;
+                    // current_offset++;
                 }
             } else if (prefix == "🏷️" || prefix == "📎" || prefix == "📤") {
                 std::string name;
-                size_t size;
+                size_t size, offset;
                 std::istringstream ss(content);
-                ss >> name >> size;
+                ss >> name >> size >> offset;
 
                 name = trim(name);
                 SymbolType type = prefix == "🏷️" ? SymbolType::LOCAL : prefix == "📎" ? SymbolType::WEAK
@@ -116,7 +116,7 @@ FLEObject load_fle(const std::string& file)
                 Symbol sym {
                     type,
                     std::string(key),
-                    current_offset,
+                    offset,
                     size,
                     name
                 };
@@ -127,10 +127,11 @@ FLEObject load_fle(const std::string& file)
                 // 如果是 BSS 段的符号，累加其大小
                 if (key == ".bss") {
                     bss_size += size;
+                    // current_offset += size;
                 }
             } else if (prefix == "❓") {
                 std::string reloc_str = trim(content);
-                std::regex reloc_pattern(R"(\.(rel|abs64|abs|abs32s)\(([\w.]+)\s*[-+]\s*(\d+)\))");
+                std::regex reloc_pattern(R"(\.(rel|abs64|abs|abs32s)\(([\w.]+)\s*([-+])\s*([0-9a-fA-F]+)\))");
                 std::smatch match;
 
                 if (!std::regex_match(reloc_str, match, reloc_pattern)) {
@@ -139,7 +140,7 @@ FLEObject load_fle(const std::string& file)
 
                 RelocationType type = parse_relocation_type(match[1].str());
                 size_t size = (type == RelocationType::R_X86_64_64) ? 8 : 4;
-                current_offset += size;
+                // current_offset += size;
             }
         }
     }
@@ -167,7 +168,7 @@ FLEObject load_fle(const std::string& file)
                 }
             } else if (prefix == "❓") {
                 std::string reloc_str = trim(content);
-                std::regex reloc_pattern(R"(\.(rel|abs64|abs|abs32s)\(([\w.]+)\s*[-+]\s*(\d+)\))");
+                std::regex reloc_pattern(R"(\.(rel|abs64|abs|abs32s)\(([\w.]+)\s*([-+])\s*([0-9a-fA-F]+)\))");
                 std::smatch match;
 
                 if (!std::regex_match(reloc_str, match, reloc_pattern)) {
@@ -176,12 +177,17 @@ FLEObject load_fle(const std::string& file)
 
                 RelocationType type = parse_relocation_type(match[1].str());
                 std::string symbol_name = match[2].str();
+                std::string sign = match[3].str();
+                int64_t append_value = std::stoi(match[4].str(), nullptr, 16);
+                if (sign == "-") {
+                    append_value = -append_value;
+                }
 
                 Relocation reloc {
                     type,
                     section.data.size(),
                     symbol_name,
-                    std::stoi(match[3].str())
+                    append_value
                 };
 
                 // 使用哈希表快速查找符号
@@ -268,13 +274,13 @@ int main(int argc, char* argv[])
                 objects.push_back(load_fle(file));
             }
 
-            for (const auto& obj : objects) {
-                std::cerr << "Object type: " << obj.type << std::endl;
-                std::cerr << "Symbols:" << std::endl;
-                for (const auto& sym : obj.symbols) {
-                    std::cerr << "  " << sym.name << " in " << sym.section << std::endl;
-                }
-            }
+            // for (const auto& obj : objects) {
+            //     std::cerr << "Object type: " << obj.type << std::endl;
+            //     std::cerr << "Symbols:" << std::endl;
+            //     for (const auto& sym : obj.symbols) {
+            //         std::cerr << "  " << sym.name << " in " << sym.section << std::endl;
+            //     }
+            // }
 
             // 链接
             FLEObject linked_obj = FLE_ld(objects);
