@@ -1,4 +1,5 @@
 #include "fle.hpp"
+#include "string_utils.hpp"
 #include <cassert>
 #include <cstdint>
 #include <cstring>
@@ -31,7 +32,7 @@ void FLE_exec(const FLEObject& obj)
         }
 
         // BSS段不需要复制数据，因为mmap已经返回零初始化的内存
-        if (phdr.name != ".bss" && !phdr.name.starts_with(".bss.")) {
+        if (phdr.name != ".bss" && !starts_with(phdr.name, ".bss.")) {
             memcpy(addr, it->second.data.data(), phdr.size);
         }
 

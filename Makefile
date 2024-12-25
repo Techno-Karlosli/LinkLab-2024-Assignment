@@ -1,6 +1,6 @@
 CXX = g++
-CXXFLAGS = -std=c++20 -Wall -Wextra -I./include -Os -g -fPIE
-REQUIRED_CXX_STANDARD = 20
+CXXFLAGS = -std=c++17 -Wall -Wextra -I./include -Os -g -fPIE
+REQUIRED_CXX_STANDARD = 17
 
 # 源文件
 BASE_SRCS = $(shell find src/base -name '*.cpp')

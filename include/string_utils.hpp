@@ -52,3 +52,8 @@ inline std::string join(const std::vector<std::string>& v, std::string_view deli
     }
     return result;
 }
+
+inline bool starts_with(std::string_view s, std::string_view prefix)
+{
+    return s.find(prefix) == 0;
+}
