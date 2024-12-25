@@ -132,7 +132,7 @@ std::map<int, std::pair<int, std::string>> parse_relocations(
 
     for (const auto& line : splitlines(reloc_dump)) {
         if (str_contains(line, "Relocation section")) {
-            in_section = str_contains(line, std::format(".rela{}", section));
+            in_section = str_contains(line, std::format("'.rela{}'", section));
             continue;
         }
 
