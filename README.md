@@ -17,8 +17,8 @@
 > [!WARNING]
 > 这是 LinkLab 的第一个版本，可能存在一些问题。如果你：
 >
-> - 发现了 bug，请[提交 issue](https://github.com/RUCICS/LinkLab-2024/issues)（记得遵循 issue 模板）
-> - 有任何疑问，请在[讨论区](https://github.com/RUCICS/LinkLab-2024/discussions)提出
+> - 发现了 bug，请[提交 issue](https://github.com/RUCICS/LinkLab-2024-Assignment/issues)（记得遵循 issue 模板）
+> - 有任何疑问，请在[讨论区](https://github.com/RUCICS/LinkLab-2024-Assignment/discussions)提出
 > - 想要改进实验，欢迎提交 PR
 >
 > 预计耗时：
@@ -28,7 +28,7 @@
 >
 > 我们会认真对待每一个反馈！
 
-[![GitHub Issues](https://img.shields.io/github/issues/RUCICS/LinkLab-2024?style=for-the-badge&logo=github)](https://github.com/RUCICS/LinkLab-2024/issues)
+[![GitHub Issues](https://img.shields.io/github/issues/RUCICS/LinkLab-2024-Assignment?style=for-the-badge&logo=github)](https://github.com/RUCICS/LinkLab-2024-Assignment/issues)
 
 ## 快速开始
 
