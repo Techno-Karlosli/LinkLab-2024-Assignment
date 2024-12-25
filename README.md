@@ -30,6 +30,17 @@
 
 [![GitHub Issues](https://img.shields.io/github/issues/RUCICS/LinkLab-2024-Assignment?style=for-the-badge&logo=github)](https://github.com/RUCICS/LinkLab-2024-Assignment/issues)
 
+## 环境要求
+
+- 操作系统：Linux（推荐 Ubuntu 22.04 或更高版本）
+  - Windows 用户可考虑使用 WSL 2
+- 编译器：g++ 12.0.0 或更高版本（需要 C++20）
+- Python 3.6+
+- Makefile
+- Git
+
+请使用 Git 管理你的代码，养成经常提交的好习惯。
+
 ## 快速开始
 
 ```bash
@@ -44,15 +55,6 @@ make
 make test_1  # 运行任务一的测试
 make test    # 运行所有测试
 ```
-
-## 环境要求
-
-- 操作系统：Linux（推荐 Ubuntu 22.04 或更高版本）
-- 编译器：g++ 12.0.0 或更高版本（需要 C++20）
-- Python 3.6+
-- Git
-
-请使用 Git 管理你的代码，养成经常提交的好习惯。
 
 ## 项目结构
 
@@ -255,16 +257,6 @@ void count() {                // 全局函数
 make test_1
 ```
 
-如果看到：
-
-```
-Running test case: 1-nm-test
-✓ Symbol table matches expected output
-All tests passed!
-```
-
-说明任务一完成！
-
 ## 任务二：实现基础链接器
 
 让我们从最简单的情况开始。假设有这样一个程序：
@@ -320,7 +312,7 @@ int main() {
 }
 ```
 
-你的任务是把这些目标文件链接成一个可执行文件，其内存状态应该类似为：
+你的任务是把这些目标文件链接成一个可执行文件，其**内存状态**应该类似为：
 
 ```json
 {
@@ -337,10 +329,19 @@ int main() {
         .size = <总大小>,
         .flags = 7             // 可读、可写、可执行，在后续的任务中会修改为更 fine-grained 的权限设置
     }]
+    .entry = <入口地址> // 程序的入口点
 }
 ```
 
-在这个阶段，我们只需要处理最简单的重定位类型：`R_X86_64_32`（32 位绝对地址）。它告诉链接器："在这里填入符号的绝对地址"。
+在这个阶段，我们只需要处理最简单的重定位类型：`R_X86_64_32`（32 位绝对地址）。它告诉链接器："在这里填入符号的绝对地址"。但是，你在支持 `R_X86_64_32` 重定位时，应一并支持 `R_X86_64_32S` 重定位，他们的关系是：
+
+- `R_X86_64` 的意思是，现在需要把重定位给解析到一个 64 位地址的符号
+- `32` 的意思是，这个重定位位置需要填入一个 32 位的地址
+- 根据后缀的不同，重定位的含义也不同：
+  - `R_X86_64_32` 表示目标的 64 位地址的前 32 位是 0，此处填写的是其后 32 位（即做零扩展恢复到 64 位）
+  - `R_X86_64_32S` 表示目标的 64 位地址的前 32 位是 1，此处填写的是其后 32 位（即做符号扩展恢复到 64 位）
+
+`entry` 是程序的入口点，在 x86-64 中，它通常是 `_start` 函数的地址。你可以在最后拼接好的数据中，找到 `_start` 函数的地址，并填入 `entry` 字段。
 
 提示：
 
@@ -536,6 +537,8 @@ void init_logger() {         // 强符号会覆盖默认实现
 make test_4
 ```
 
+从 `test_4` 开始，我们开始包含 [`tests/common/minilibc.h`](./tests/common/minilibc.h) 库，这个库模拟了标准 C 库的一部分功能，提供预定义的 `_start` 函数，会将控制权交给 `main` 函数。
+
 ## 任务五：处理 64 位地址
 
 到目前为止，我们处理的都是 32 位的地址（`R_X86_64_32` 和 `R_X86_64_PC32`）。但在 64 位系统中，有时我们需要完整的 64 位地址。比如：
@@ -558,16 +561,19 @@ int *ptr = &numbers[0];  // 需要完整的 64 位地址！
 
 ```json
 {
-  "type": ".obj",
-  ".data": [
-    "📤: numbers 0",
-    "🔢: 01 00 00 00", // 1
-    "🔢: 02 00 00 00", // 2
-    "🔢: 03 00 00 00", // 3
-    "🔢: 04 00 00 00", // 4
-    "📤: ptr 16",
-    "❓: .abs64(numbers)" // 需要 numbers 的完整地址
-  ]
+    "type": ".obj",
+    ".data": [
+        "📤: numbers 16", // numbers 数组
+        "🔢: 01 00 00 00", // 1
+        "🔢: 02 00 00 00", // 2
+        "🔢: 03 00 00 00", // 3
+        "🔢: 04 00 00 00"  // 4
+    ],
+    ".data.rel.local": [
+        "📤: ptr 8",
+        "❓: .abs64(numbers + 0)" // 需要 numbers 的完整地址
+    ]
+    ...
 }
 ```
 
@@ -581,7 +587,7 @@ int *ptr = &numbers[0];  // 需要完整的 64 位地址！
 
 提示：
 
-1. 使用 uint64_t 存储地址
+1. 使用 64 位整数存储地址
 2. 小心整数溢出
 3. 用 readfle 检查输出
 
@@ -595,7 +601,7 @@ make test_5
 
 ## 任务六：分离代码和数据
 
-到目前为止，我们把所有内容都放在一个段里。这看起来很方便，但实际上非常危险。看看这个例子：
+到目前为止，我们把所有内容都放在一个段里。这看起来很方便，但正如我们在汇编一章所学到的那样，这给了攻击者篡改代码的机会。比如：
 
 ```c
 void hack() {
@@ -621,21 +627,25 @@ void hack() {
 ```json
 {
   "type": ".obj",
+
   ".text": [
-    "📤: main 0",
-    "🔢: 55 48 89 e5" // 代码
-  ],
-  ".rodata": [
-    "📤: message 0",
-    "🔢: 48 65 6c 6c 6f" // "Hello"
+    "📤: main 40",
+    "🔢: f3 0f 1e fa 55 48 89 e5 be 00 00 00 00 48 8d 05",
+    "❓: .rel(.rodata - 4)",
+    "🔢: 48 89 c7 b8 00 00 00 00 e8",
+    "❓: .rel(print - 4)",
+    "🔢: b8 00 00 00 00 5d c3"
   ],
   ".data": [
-    "📤: counter 0",
-    "🔢: 00 00 00 00" // 已初始化数据
+    "📤: counter 4",
+    "🔢: 03 00 00 00" // 已初始化数据
   ],
   ".bss": [
-    "📤: buffer 0", // 未初始化数据
-    "size: 1024" // 只记录大小
+    "📤: buffer 4096" // 未初始化数据，只记录大小
+  ],
+  ".rodata": [
+    "🏷️: .rodata 0",
+    "🔢: 48 65 6c 6c 6f 00" // "Hello"
   ]
 }
 ```
@@ -658,12 +668,6 @@ void hack() {
 ```json
 {
     "type": "exe",
-    "sections": {
-        ".text": { ... },      // 代码
-        ".rodata": { ... },    // 常量
-        ".data": { ... },      // 已初始化数据
-        ".bss": { ... }        // 未初始化数据（只记录大小）
-    },
     "phdrs": [
         {
             "name": ".text",
@@ -678,15 +682,20 @@ void hack() {
             "flags": 4        // r--
         },
         // ...其他段...
-    ]
+    ],
+    "entry": <入口地址>,
+    ".text": { ... }, // 代码
+    ".rodata": { ... }, // 常量
+    ".data": { ... }, // 已初始化数据
+    ".bss": { ... } // 未初始化数据
 }
 ```
 
 提示：
 
-1. 段的地址要适当对齐（影响性能）
-2. 注意更新所有重定位（地址都变了）
-3. BSS 段只需要分配空间，不需要数据
+1. 段的地址要适当对齐，否则会影响性能，且会影响 loader 中 `mmap` 的分配
+2. 注意更新所有重定位，因为地址都变了
+3. BSS 段只需要分配空间，不需要数据，节省了空间
 4. 考虑把相似权限的段合并到一个程序头中
 
 修改 `src/student/ld.cpp`，实现内存布局的优化。
@@ -807,6 +816,7 @@ $ \text{总分} = \frac{\text{正确性得分}} {\text{正确性满分}} \times 
 
 ## 参考资料
 
-1. [System V ABI](https://refspecs.linuxbase.org/elf/x86_64-abi-0.99.pdf)
-2. [Linkers & Loaders](https://linker.iecc.com/)
-3. [How To Write Shared Libraries](https://www.akkadia.org/drepper/dsohowto.pdf)
+1. [CSAPP: Computer Systems A Programmer's Perspective](https://csapp.cs.cmu.edu/)
+2. [System V ABI](https://refspecs.linuxbase.org/elf/x86_64-abi-0.99.pdf)
+3. [Linkers & Loaders](https://linker.iecc.com/)
+4. [How To Write Shared Libraries](https://www.akkadia.org/drepper/dsohowto.pdf)
