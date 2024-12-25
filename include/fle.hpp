@@ -45,7 +45,7 @@ struct Symbol {
 struct FLESection {
     std::vector<uint8_t> data; // Raw data
     std::vector<Relocation> relocs; // Relocations for this section
-    size_t bss_size; // BSS section size (if this is a BSS section)
+    bool has_symbols = false;
 };
 
 enum class PHF { // Program Header Flags
@@ -74,7 +74,7 @@ struct SectionHeader {
 struct ProgramHeader {
     std::string name; // 段名
     uint64_t vaddr; // 虚拟地址（改用64位）
-    uint32_t size; // 段大小
+    uint64_t size; // 段大小
     uint32_t flags; // 权限
 };
 

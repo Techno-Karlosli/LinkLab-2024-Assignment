@@ -81,9 +81,7 @@ FLEObject load_fle(const std::string& file)
 
     parse_section_headers(j, obj);
 
-    // 使用哈希表来存储符号，加快查找速度
     std::unordered_map<std::string, Symbol> symbol_table;
-    size_t bss_size = 0; // 用于累计 BSS 段的大小
 
     // 第一遍：收集所有符号定义并计算偏移量
     for (auto& [key, value] : j.items()) {
@@ -97,13 +95,7 @@ FLEObject load_fle(const std::string& file)
             std::string prefix = line_str.substr(0, colon_pos);
             std::string content = line_str.substr(colon_pos + 1);
 
-            if (prefix == "🔢") {
-                std::stringstream ss(content);
-                uint32_t byte;
-                while (ss >> std::hex >> byte) {
-                    // current_offset++;
-                }
-            } else if (prefix == "🏷️" || prefix == "📎" || prefix == "📤") {
+            if (prefix == "🏷️" || prefix == "📎" || prefix == "📤") {
                 std::string name;
                 size_t size, offset;
                 std::istringstream ss(content);
@@ -123,24 +115,6 @@ FLEObject load_fle(const std::string& file)
 
                 symbol_table[name] = sym;
                 obj.symbols.push_back(sym);
-
-                // 如果是 BSS 段的符号，累加其大小
-                if (key == ".bss") {
-                    bss_size += size;
-                    // current_offset += size;
-                }
-            } else if (prefix == "❓") {
-                std::string reloc_str = trim(content);
-                std::regex reloc_pattern(R"(\.(rel|abs64|abs|abs32s)\(([\w.]+)\s*([-+])\s*([0-9a-fA-F]+)\))");
-                std::smatch match;
-
-                if (!std::regex_match(reloc_str, match, reloc_pattern)) {
-                    throw std::runtime_error("Invalid relocation: " + reloc_str);
-                }
-
-                RelocationType type = parse_relocation_type(match[1].str());
-                size_t size = (type == RelocationType::R_X86_64_64) ? 8 : 4;
-                // current_offset += size;
             }
         }
     }
@@ -151,8 +125,7 @@ FLEObject load_fle(const std::string& file)
             continue;
 
         FLESection section;
-        // 设置 BSS 段的大小
-        section.bss_size = (key == ".bss") ? bss_size : 0;
+        section.has_symbols = false;
 
         for (const auto& line : value) {
             std::string line_str = line.get<std::string>();
@@ -190,7 +163,6 @@ FLEObject load_fle(const std::string& file)
                     append_value
                 };
 
-                // 使用哈希表快速查找符号
                 auto it = symbol_table.find(symbol_name);
                 if (it == symbol_table.end()) {
                     // 如果符号不在符号表中，添加为未定义符号
@@ -210,6 +182,8 @@ FLEObject load_fle(const std::string& file)
                 // 根据重定位类型预留空间
                 size_t size = (type == RelocationType::R_X86_64_64) ? 8 : 4;
                 section.data.insert(section.data.end(), size, 0);
+            } else if (prefix == "🏷️" || prefix == "📎" || prefix == "📤") {
+                section.has_symbols = true;
             }
         }
 
