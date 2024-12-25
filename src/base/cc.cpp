@@ -1,10 +1,9 @@
+#define FMT_HEADER_ONLY
 #include "fle.hpp"
 #include "string_utils.hpp"
 #include <algorithm>
 #include <filesystem>
-#include <format>
-#include <iostream>
-#include <ranges>
+#include <fmt/format.h>
 #include <regex>
 #include <sstream>
 #include <string>
@@ -31,7 +30,7 @@ constexpr bool contains(const Container& container, const T& value)
 // 执行系统命令并返回输出结果
 std::string execute_command(std::string_view cmd)
 {
-    auto command_with_stderr = std::format("{} 2>/dev/null", cmd);
+    auto command_with_stderr = fmt::format("{} 2>/dev/null", cmd);
     if (FILE* pipe = popen(command_with_stderr.c_str(), "r")) {
         std::string result;
         std::array<char, 128> buffer;
@@ -89,7 +88,7 @@ std::vector<Symbol> parse_symbols(const std::string& binary, std::string_view se
     };
 
     std::vector<Symbol> symbols;
-    const auto symbol_dump = execute_command(std::format("objdump -t {}", binary));
+    const auto symbol_dump = execute_command(fmt::format("objdump -t {}", binary));
 
     for (const auto& line : splitlines(symbol_dump)) {
         if (std::smatch match; std::regex_match(line, match, symbol_pattern)) {
@@ -108,13 +107,13 @@ std::string format_symbol_line(const Symbol& sym)
 {
     switch (sym.binding) {
     case 'l':
-        return std::format("🏷️: {} {} {}", sym.name, sym.size, sym.offset);
+        return fmt::format("🏷️: {} {} {}", sym.name, sym.size, sym.offset);
     case 'g':
-        return std::format("📤: {} {} {}", sym.name, sym.size, sym.offset);
+        return fmt::format("📤: {} {} {}", sym.name, sym.size, sym.offset);
     case 'w':
-        return std::format("📎: {} {} {}", sym.name, sym.size, sym.offset);
+        return fmt::format("📎: {} {} {}", sym.name, sym.size, sym.offset);
     default:
-        throw std::runtime_error(std::format("Unsupported symbol binding: {}", sym.binding));
+        throw std::runtime_error(fmt::format("Unsupported symbol binding: {}", sym.binding));
     }
 }
 
@@ -127,12 +126,12 @@ std::map<int, std::pair<int, std::string>> parse_relocations(
     };
 
     std::map<int, std::pair<int, std::string>> relocations;
-    const auto reloc_dump = execute_command(std::format("readelf -r {}", binary));
+    const auto reloc_dump = execute_command(fmt::format("readelf -r {}", binary));
     bool in_section = false;
 
     for (const auto& line : splitlines(reloc_dump)) {
         if (str_contains(line, "Relocation section")) {
-            in_section = str_contains(line, std::format("'.rela{}'", section));
+            in_section = str_contains(line, fmt::format("'.rela{}'", section));
             continue;
         }
 
@@ -152,13 +151,13 @@ std::map<int, std::pair<int, std::string>> parse_relocations(
                 [reloc_type](const auto& pair) { return pair.first == reloc_type; });
 
             if (format_it == RELOCATION_FORMATS.end()) {
-                throw std::runtime_error(std::format("Unsupported relocation type: {}", reloc_type));
+                throw std::runtime_error(fmt::format("Unsupported relocation type: {}", reloc_type));
             }
 
             const auto& [_, format] = *format_it;
             relocations.emplace(offset,
                 std::pair { static_cast<int>(format.size),
-                    std::format("{}({})", format.format, symbol) });
+                    fmt::format("{}({})", format.format, symbol) });
         }
     }
     return relocations;
@@ -172,14 +171,15 @@ std::vector<std::string> elf_to_fle(
 
     // BSS段只需处理符号
     if (is_bss) {
-        std::ranges::transform(symbols, std::back_inserter(result),
-            [](const auto& sym) { return format_symbol_line(sym); });
+        for (const auto& sym : symbols) {
+            result.push_back(format_symbol_line(sym));
+        }
         return result;
     }
 
     // 获取节数据和重定位信息
     const auto section_data = execute_command(
-        std::format("objcopy --dump-section {}=/dev/stdout {}", section, binary));
+        fmt::format("objcopy --dump-section {}=/dev/stdout {}", section, binary));
     const auto relocations = parse_relocations(binary, section);
 
     // 处理数据
@@ -187,16 +187,16 @@ std::vector<std::string> elf_to_fle(
     std::vector<uint8_t> holding;
     holding.reserve(16);
 
-    auto dump_holding = [&result](std::span<const uint8_t> holding) {
+    auto dump_holding = [&result](const std::vector<uint8_t>& holding) {
         if (holding.empty())
             return;
 
         std::string hex_dump;
         hex_dump.reserve(3 * holding.size());
         for (auto byte : holding) {
-            std::format_to(std::back_inserter(hex_dump), "{:02x} ", byte);
+            fmt::format_to(std::back_inserter(hex_dump), "{:02x} ", byte);
         }
-        result.push_back(std::format("🔢: {}", trim(hex_dump)));
+        result.push_back(fmt::format("🔢: {}", trim(hex_dump)));
     };
 
     for (size_t i = 0; i < section_data.size(); ++i) {
@@ -214,7 +214,7 @@ std::vector<std::string> elf_to_fle(
             dump_holding(holding);
             holding.clear();
             const auto& [size, reloc] = it->second;
-            result.push_back(std::format("❓: {}", reloc));
+            result.push_back(fmt::format("❓: {}", reloc));
             skip = size;
         }
 
@@ -246,14 +246,14 @@ constexpr auto COMPILER_FLAGS = std::array {
 
 void FLE_cc(const std::vector<std::string>& options)
 {
-    // std::cout << std::format("options: {}\n", join(options, " "));
+    // std::cout << fmt::format("options: {}\n", join(options, " "));
 
     // 确定输出文件名
     const auto output_it = std::find(options.begin(), options.end(), "-o");
     const std::string binary = (output_it != options.end() && std::next(output_it) != options.end())
         ? *std::next(output_it)
         : "a.out";
-    // std::cout << std::format("binary: {}\n", binary);
+    // std::cout << fmt::format("binary: {}\n", binary);
 
     // 编译命令
     std::vector<std::string> gcc_cmd = { "gcc", "-c" };
@@ -267,7 +267,7 @@ void FLE_cc(const std::vector<std::string>& options)
     }
 
     // 解析目标文件
-    const auto objdump_output = execute_command(std::format("objdump -h {}", binary));
+    const auto objdump_output = execute_command(fmt::format("objdump -h {}", binary));
     FLEWriter writer;
     writer.set_type(".obj");
 
@@ -346,8 +346,8 @@ void FLE_cc(const std::vector<std::string>& options)
 
     // 写入输出文件
     const std::filesystem::path input_path { binary };
-    const auto output_path = input_path.parent_path() / std::format("{}.fle", input_path.stem().string());
-    // std::cout << std::format("output_path: {}\n", output_path.string());
+    const auto output_path = input_path.parent_path() / fmt::format("{}.fle", input_path.stem().string());
+    // std::cout << fmt::format("output_path: {}\n", output_path.string());
     writer.write_to_file(output_path.string());
 
     std::filesystem::remove(binary);
