@@ -36,7 +36,6 @@ static void parse_section_headers(const json& j, FLEObject& obj)
             shdr.addr = shdr_json["addr"].get<uint64_t>();
             shdr.offset = shdr_json["offset"].get<uint64_t>();
             shdr.size = shdr_json["size"].get<uint64_t>();
-            shdr.addralign = shdr_json["addralign"].get<uint32_t>();
             obj.shdrs.push_back(shdr);
         }
     }

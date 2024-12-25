@@ -68,7 +68,6 @@ struct SectionHeader {
     uint64_t addr; // 虚拟地址
     uint64_t offset; // 在文件中的偏移
     uint64_t size; // 节大小
-    uint32_t addralign; // 地址对齐要求
 };
 
 struct ProgramHeader {
@@ -151,7 +150,6 @@ public:
             shdr_json["addr"] = shdr.addr;
             shdr_json["offset"] = shdr.offset;
             shdr_json["size"] = shdr.size;
-            shdr_json["addralign"] = shdr.addralign;
             shdrs_json.push_back(shdr_json);
         }
         result["shdrs"] = shdrs_json;

@@ -327,7 +327,7 @@ void FLE_cc(const std::vector<std::string>& options)
             .addr = 0,
             .offset = 0,
             .size = std::stoul(match[4].str(), nullptr, 16),
-            .addralign = static_cast<uint32_t>(section_name == ".text" ? 16 : 8) });
+        });
 
         sections_to_process.emplace_back(section_name, is_nobits);
     }
