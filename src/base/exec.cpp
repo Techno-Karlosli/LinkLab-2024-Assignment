@@ -3,6 +3,7 @@
 #include <cassert>
 #include <cstdint>
 #include <cstring>
+#include <iostream>
 #include <stdexcept>
 #include <sys/mman.h>
 #include <unistd.h>
@@ -16,6 +17,11 @@ void FLE_exec(const FLEObject& obj)
 
     // Map each section
     for (const auto& phdr : obj.phdrs) {
+        if (phdr.size == 0) {
+            std::cerr << "Warning: section " << phdr.name << " has size 0, skipping." << std::endl;
+            continue;
+        }
+
         void* addr = mmap((void*)phdr.vaddr, phdr.size,
             PROT_READ | PROT_WRITE,
             MAP_PRIVATE | MAP_FIXED | MAP_ANONYMOUS, -1, 0);
