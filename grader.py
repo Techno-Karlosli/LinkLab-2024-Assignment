@@ -320,10 +320,11 @@ class CompositeChecker:
 
 
 class TestRunner:
-    def __init__(self, config: Config, console: Optional[Console] = None):
+    def __init__(self, config: Config, console: Optional[Console] = None, verbose: bool = False):
         self.config = config
         self.console = console
         self.checker = CompositeChecker()
+        self.verbose = verbose
 
     def run_test(self, test: TestCase) -> TestResult:
         start_time = time.perf_counter()
@@ -507,6 +508,19 @@ class TestRunner:
                 text=True,
                 timeout=step.get("timeout", 5.0),
             )
+
+            # 如果启用了详细输出模式
+            if self.verbose and self.console and not isinstance(self.console, type):
+                self.console.print(f"[bold cyan]Step {step_index} Output:[/bold cyan]")
+                self.console.print("[bold]Command:[/bold]", " ".join(cmd + args))
+                if process.stdout:
+                    self.console.print("[bold]Standard Output:[/bold]")
+                    self.console.print(process.stdout)
+                if process.stderr:
+                    self.console.print("[bold]Standard Error:[/bold]")
+                    self.console.print(process.stderr)
+                self.console.print(f"[bold]Return Code:[/bold] {process.returncode}\n")
+
         except subprocess.TimeoutExpired:
             return self._create_timeout_result(test, step, step_index, start_time)
 
@@ -799,9 +813,16 @@ class Grader:
 
         test_cases = self._load_test_cases(specific_test, prefix_match, group)
         if not self.json_output:
-            self.console.print(
-                f"\n[bold]Running {len(test_cases)} test cases{' in group ' + group if group else ''}...[/bold]\n"
-            )
+            # 如果是组测试，显示完整的组名
+            if group and test_cases:
+                matched_group = next(g for g in self.config.groups if g.lower().startswith(group.lower()))
+                self.console.print(
+                    f"\n[bold]Running {len(test_cases)} test cases in group {matched_group}...[/bold]\n"
+                )
+            else:
+                self.console.print(
+                    f"\n[bold]Running {len(test_cases)} test cases...[/bold]\n"
+                )
 
         total_score = 0
         max_score = 0
@@ -880,16 +901,31 @@ class Grader:
     ) -> List[TestCase]:
         # 如果指定了组，则从组配置中获取测试点列表
         if group:
-            if group not in self.config.groups:
+            # 查找匹配的组名
+            matching_groups = []
+            for group_name in self.config.groups:
+                if group_name.lower().startswith(group.lower()):
+                    matching_groups.append(group_name)
+            
+            if not matching_groups:
                 if not self.json_output:
-                    self.console.print(f"[red]Error:[/red] Group '{group}' not found in config")
+                    self.console.print(f"[red]Error:[/red] No group matching '{group}' found in config")
                 else:
-                    print(f"Error: Group '{group}' not found in config", file=sys.stderr)
+                    print(f"Error: No group matching '{group}' found in config", file=sys.stderr)
+                sys.exit(1)
+            elif len(matching_groups) > 1:
+                if not self.json_output:
+                    self.console.print(f"[yellow]Warning:[/yellow] Multiple groups match '{group}':")
+                    for g in matching_groups:
+                        self.console.print(f"  - {g}")
+                    self.console.print("Please be more specific in your group name.")
+                else:
+                    print(f"Error: Multiple groups match '{group}'", file=sys.stderr)
                 sys.exit(1)
             
+            group = matching_groups[0]
             test_cases = []
             for test_id in self.config.groups[group]:
-                # 对每个测试点ID使用前缀匹配模式加载
                 cases = self._load_test_cases(test_id, True)
                 test_cases.extend(cases)
             
@@ -1032,27 +1068,36 @@ class Grader:
 def main():
     parser = argparse.ArgumentParser(description="Grade student submissions")
     parser.add_argument(
-        "--json", action="store_true", help="Output results in JSON format"
+        "-j", "--json",
+        action="store_true",
+        help="Output results in JSON format"
     )
     parser.add_argument(
-        "--write-result",
+        "-w", "--write-result",
         action="store_true",
         help="Write percentage score to .autograder_result file",
     )
     parser.add_argument(
-        "--prefix",
+        "-p", "--prefix",
         action="store_true",
         help="Use number prefix exact matching mode for test case selection",
     )
     parser.add_argument(
-        "--group",
+        "-g", "--group",
         help="Run all test cases in the specified group",
+    )
+    parser.add_argument(
+        "-v", "--verbose",
+        action="store_true",
+        help="Show detailed output of each test step",
     )
     parser.add_argument("test", nargs="?", help="Specific test to run")
     args = parser.parse_args()
 
     try:
         grader = Grader(json_output=args.json)
+        # 更新TestRunner的初始化
+        grader.runner = TestRunner(grader.config, grader.console, verbose=args.verbose)
         grader.run_all_tests(args.test, prefix_match=args.prefix, group=args.group)
 
         # 检查是否所有测试都通过
