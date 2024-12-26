@@ -8,73 +8,72 @@
 
 using json = nlohmann::ordered_json;
 
-// 重定位类型
+// Relocation types
 enum class RelocationType {
-    R_X86_64_32, // 32 位绝对寻址
-    R_X86_64_PC32, // 32 位相对寻址
-    R_X86_64_64, // 64 位绝对寻址
-    R_X86_64_32S, // 32 位有符号绝对寻址
+    R_X86_64_32, // 32-bit absolute addressing
+    R_X86_64_PC32, // 32-bit PC-relative addressing
+    R_X86_64_64, // 64-bit absolute addressing
+    R_X86_64_32S, // 32-bit signed absolute addressing
 };
 
-// 重定位项
+// Relocation entry
 struct Relocation {
     RelocationType type;
-    size_t offset; // 重定位位置
-    std::string symbol; // 重定位符号
-    int64_t addend; // 重定位加数
+    size_t offset; // Relocation position
+    std::string symbol; // Symbol to relocate
+    int64_t addend; // Relocation addend
 };
 
-// 符号类型
+// Symbol types
 enum class SymbolType {
-    LOCAL, // 局部符号 (🏷️)
-    WEAK, // 弱全局符号 (📎)
-    GLOBAL, // 强全局符号 (📤)
-    UNDEFINED // 未定义符号
+    LOCAL, // Local symbol (🏷️)
+    WEAK, // Weak global symbol (📎)
+    GLOBAL, // Strong global symbol (📤)
+    UNDEFINED // Undefined symbol
 };
 
-// 符号项
+// Symbol entry
 struct Symbol {
     SymbolType type;
-    std::string section; // 符号所在的节名
-    size_t offset; // 在节内的偏移
-    size_t size; // 符号大小
-    std::string name; // 符号名称
+    std::string section; // Section containing the symbol
+    size_t offset; // Offset within section
+    size_t size; // Symbol size
+    std::string name; // Symbol name
 };
 
-// FLE memory structure
 struct FLESection {
-    std::vector<uint8_t> data; // Raw data
-    std::vector<Relocation> relocs; // Relocations for this section
-    bool has_symbols = false;
+    std::vector<uint8_t> data; // Section data (stored as bytes)
+    std::vector<Relocation> relocs; // Relocation table for this section
+    bool has_symbols; // Whether section contains symbols
 };
 
 enum class PHF { // Program Header Flags
-    X = 1, // 可执行
-    W = 2, // 可写
-    R = 4 // 可读
+    X = 1, // Executable
+    W = 2, // Writable
+    R = 4 // Readable
 };
 
 enum class SHF { // Section Header Flags
-    ALLOC = 1, // 需要在运行时分配内存
-    WRITE = 2, // 可写
-    EXEC = 4, // 可执行
-    NOBITS = 8, // 不占用文件空间（如BSS）
+    ALLOC = 1, // Needs memory allocation at runtime
+    WRITE = 2, // Writable
+    EXEC = 4, // Executable
+    NOBITS = 8, // Takes no space in file (like BSS)
 };
 
 struct SectionHeader {
-    std::string name; // 节名
-    uint32_t type; // 节类型
-    uint32_t flags; // 节标志
-    uint64_t addr; // 虚拟地址
-    uint64_t offset; // 在文件中的偏移
-    uint64_t size; // 节大小
+    std::string name; // Section name
+    uint32_t type; // Section type
+    uint32_t flags; // Section flags
+    uint64_t addr; // Virtual address
+    uint64_t offset; // File offset
+    uint64_t size; // Section size
 };
 
 struct ProgramHeader {
-    std::string name; // 段名
-    uint64_t vaddr; // 虚拟地址（64位）
-    uint64_t size; // 段大小
-    uint32_t flags; // 权限
+    std::string name; // Segment name
+    uint64_t vaddr; // Virtual address (64-bit)
+    uint64_t size; // Segment size
+    uint32_t flags; // Permissions
 };
 
 struct FLEObject {
