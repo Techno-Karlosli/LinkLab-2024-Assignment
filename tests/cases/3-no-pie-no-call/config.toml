@@ -10,15 +10,32 @@ args = [
     "${test_dir}/main.c",
     "-o",
     "${build_dir}/main.o",
-    "-g",
-    "-Os",
-    "-fno-PIE",            # Disable PIE
-    "-fno-PIC",            # Disable PIC
+    "-g0",
+    # "-Os",
+    "-fno-PIE", # Disable PIE
+    "-fno-PIC", # Disable PIC
 ]
 
 [run.check]
 return_code = 0
 files = ["${build_dir}/main.fle"]
+
+[[run]]
+name = "Compile program"
+command = "${root_dir}/cc"
+args = [
+    "${test_dir}/foo.c",
+    "-o",
+    "${build_dir}/foo.o",
+    "-g0",
+    # "-Os",
+    "-fno-PIE", # Disable PIE
+    "-fno-PIC", # Disable PIC
+]
+
+[run.check]
+return_code = 0
+files = ["${build_dir}/foo.fle"]
 
 [[run]]
 name = "Link program"

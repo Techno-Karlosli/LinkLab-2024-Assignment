@@ -1,9 +1,5 @@
-// Global variables for absolute addressing test
-int result = 1;
+extern const char str[];
 
-const char str[] = "Hello, World!";
-
-// Define our own entry point
 void _start()
 {
     int ans = 0;
@@ -12,15 +8,13 @@ void _start()
         ans += str[i];
     }
 
-    result = ans;
-
     // Exit directly using syscall
     asm volatile(
         "mov %0, %%edi\n" // First argument (exit code) in edi
         "mov $60, %%eax\n" // syscall number for exit (60)
         "syscall" // Make the syscall
         : // no outputs
-        : "r"(result) // input: our result variable
+        : "r"(ans) // input: our result variable
         : "eax", "edi" // clobbered registers
     );
 }
