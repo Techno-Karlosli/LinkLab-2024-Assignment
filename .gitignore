@@ -6,6 +6,7 @@ compile_commands.json
 tests/cases/*/build
 
 cc
+disasm
 exec
 fle_base
 ld

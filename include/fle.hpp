@@ -10,10 +10,10 @@ using json = nlohmann::ordered_json;
 
 // 重定位类型
 enum class RelocationType {
-    R_X86_64_32, // 32位绝对寻址
-    R_X86_64_PC32, // 32位相对寻址
-    R_X86_64_64, // 64位绝对寻址
-    R_X86_64_32S, // 32位有符号绝对寻址
+    R_X86_64_32, // 32 位绝对寻址
+    R_X86_64_PC32, // 32 位相对寻址
+    R_X86_64_64, // 64 位绝对寻址
+    R_X86_64_32S, // 32 位有符号绝对寻址
 };
 
 // 重定位项
@@ -72,13 +72,13 @@ struct SectionHeader {
 
 struct ProgramHeader {
     std::string name; // 段名
-    uint64_t vaddr; // 虚拟地址（改用64位）
+    uint64_t vaddr; // 虚拟地址（64位）
     uint64_t size; // 段大小
     uint32_t flags; // 权限
 };
 
 struct FLEObject {
-    std::string name; // object name
+    std::string name; // Object name
     std::string type; // ".obj" or ".exe"
     std::map<std::string, FLESection> sections; // Section name -> section data
     std::vector<Symbol> symbols; // Global symbol table
@@ -218,3 +218,15 @@ FLEObject FLE_ld(const std::vector<FLEObject>& objects);
  * @param obj The FLE object to read
  */
 void FLE_readfle(const FLEObject& obj);
+
+/**
+ * Disassemble data from specified section
+ * @param obj The FLE object
+ * @param section_name Name of section to disassemble
+ *
+ * Example output format:
+ * 0000: 55                    push    rbp
+ * 0001: 48 89 e5             mov     rbp, rsp
+ * 0004: 48 83 ec 10          sub     rsp, 0x10
+ */
+void FLE_disasm(const FLEObject& obj, const std::string& section_name);

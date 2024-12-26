@@ -17,7 +17,7 @@ OBJS = $(SRCS:.cpp=.o)
 BASE_EXEC = fle_base
 
 # 工具名称
-TOOLS = cc ld nm objdump readfle exec
+TOOLS = cc ld nm objdump readfle exec disasm
 
 # 默认目标
 all: check_compiler $(TOOLS)

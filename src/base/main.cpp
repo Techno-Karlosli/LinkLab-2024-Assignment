@@ -201,7 +201,9 @@ int main(int argc, char* argv[])
                   << "  nm <input.fle>                   Display symbol table\n"
                   << "  ld [-o output.fle] input1.fle... Link FLE files\n"
                   << "  exec <input.fle>                 Execute FLE file\n"
-                  << "  cc [-o output.fle] input.c...    Compile C files\n";
+                  << "  cc [-o output.fle] input.c...    Compile C files\n"
+                  << "  readfle <input.fle>              Display FLE file information\n"
+                  << "  disasm <input.fle> <section>     Disassemble section\n";
         return 1;
     }
 
@@ -269,6 +271,11 @@ int main(int argc, char* argv[])
                 throw std::runtime_error("Usage: readfle <input.fle>");
             }
             FLE_readfle(load_fle(args[0]));
+        } else if (tool == "FLE_disasm") {
+            if (args.size() != 2) {
+                throw std::runtime_error("Usage: disasm <input.fle> <section>");
+            }
+            FLE_disasm(load_fle(args[0]), args[1]);
         } else {
             std::cerr << "Unknown tool: " << tool << std::endl;
             return 1;
