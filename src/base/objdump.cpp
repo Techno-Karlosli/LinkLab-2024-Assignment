@@ -34,6 +34,9 @@ void FLE_objdump(const FLEObject& obj, FLEWriter& writer)
         while (pos < section.data.size()) {
             // 1. 检查当前位置是否有符号或重定位
             for (const auto& sym : obj.symbols) {
+                if (sym.type == SymbolType::UNDEFINED) {
+                    continue;
+                }
                 if (sym.section == name && sym.offset == pos) {
                     std::string line;
                     switch (sym.type) {
@@ -46,6 +49,8 @@ void FLE_objdump(const FLEObject& obj, FLEWriter& writer)
                     case SymbolType::GLOBAL:
                         line = "📤: " + sym.name;
                         break;
+                    default:
+                        [[unlikely]] throw std::runtime_error("unknown symbol type");
                     }
                     writer.write_line(line);
                 }

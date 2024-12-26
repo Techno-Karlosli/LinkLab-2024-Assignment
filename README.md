@@ -34,7 +34,7 @@
 
 - 操作系统：Linux（推荐 Ubuntu 22.04 或更高版本）
   - Windows 用户可考虑使用 WSL 2
-- 编译器：g++ 12.0.0 或更高版本（需要 C++20）
+- 编译器：g++ 12.0.0 或更高版本（需要 C++17）
 - Python 3.6+
 - Makefile
 - Git
@@ -45,8 +45,8 @@
 
 ```bash
 # 克隆仓库
-git clone https://github.com/RUCICS/LinkLab-2024.git
-cd LinkLab-2024
+git clone your-assignment-repo-url
+cd your-assignment-repo-name
 
 # 构建项目
 make
@@ -230,7 +230,7 @@ void count() {                // 全局函数
 - `print`：未定义符号，需要在链接时找到（但为方便起见，我们忽略所有未定义符号，所以不需要处理）
 - `count`：全局函数符号
 
-你的第一个任务是写一个工具（nm）来查看这些符号。对于上面的代码，它应该输出：
+你的第一个任务是补充 [src/student/nm.cpp](src/student/nm.cpp) 中的 `FLE_nm` 方法，实现一个工具（nm）来查看这些符号。对于上面的代码，它应该输出：
 
 ```
 0000000000000000 T count    # 全局函数在 text 段
@@ -452,7 +452,7 @@ int main() {
 
 编译器会将这些源文件编译成目标文件。这个函数调用在我们的 FLE 格式中，表示为:
 
-```json
+```json5
 {
     "type": ".obj",
     ".text": [
@@ -596,7 +596,7 @@ void init_logger() {         // 强符号会覆盖默认实现
 
 在 FLE 格式中，弱符号用 📎 表示：
 
-```json
+```json5
 {
     "type": ".obj",
     ".text": [
@@ -685,7 +685,7 @@ int *ptr = &numbers[0];  // 需要完整的 64 位地址！
 
 这种情况下，编译器会生成一个新的重定位类型（`R_X86_64_64`）：
 
-```json
+```json5
 {
     "type": ".obj",
     ".data": [
@@ -753,7 +753,7 @@ void hack() {
 
 为了防止这些攻击，现代系统采用分段机制。在 FLE 格式中，编译器已经帮我们分好了段：
 
-```json
+```json5
 {
   "type": ".obj",
   ".text": [
