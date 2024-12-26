@@ -458,7 +458,7 @@ class TestRunner:
                 )
 
             result = self._execute_single_step(test, step, i)
-            if not result.success:
+            if not result.success and step.get("must_pass", True):
                 if progress is not None and task is not None:
                     progress.update(task, completed=i)
                 return result
@@ -466,20 +466,21 @@ class TestRunner:
             if result.step_scores:
                 step_scores.extend(result.step_scores)
 
-                if progress is not None and task is not None:
-                    progress.update(
-                        task,
-                        description=f"Running {test.meta['name']} [{i}/{len(test.run_steps)}]: {step_name}",
-                        completed=i,
-                    )
+            if progress is not None and task is not None:
+                progress.update(
+                    task,
+                    description=f"Running {test.meta['name']} [{i}/{len(test.run_steps)}]: {step_name}",
+                    completed=i,
+                )
 
-        if not has_step_scores:
+        # 如果有分步给分，确保总分不超过测试用例的总分
+        if has_step_scores:
+            total_score = min(total_score, test.meta["score"])
+        else:
             total_score = test.meta["score"]
             step_scores = None
 
-        success = (
-            total_score > 0 if has_step_scores else total_score == test.meta["score"]
-        )
+        success = total_score > 0
         return TestResult(
             success=success,
             message="All steps completed" if success else "Some steps failed",
