@@ -226,7 +226,6 @@ void FLE_disasm(const FLEObject& obj, const std::string& section_name)
 
     try {
         std::string output = exec_command(cmd.str());
-        std::cout << "Disassembly of section " << section_name << ":" << std::endl;
 
         std::istringstream iss(output);
         std::string line;
