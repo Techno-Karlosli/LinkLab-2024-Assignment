@@ -99,6 +99,11 @@ std::vector<Symbol> parse_symbols(const std::string& binary, std::string_view se
             symbols.push_back(sym);
         }
     }
+
+    std::sort(symbols.begin(), symbols.end(), [](const Symbol& a, const Symbol& b) {
+        return a.offset < b.offset;
+    });
+
     return symbols;
 }
 
