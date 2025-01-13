@@ -19,3 +19,4 @@ readelf
 **/*.fle
 
 .autograder_result
+.test_history

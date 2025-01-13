@@ -75,4 +75,7 @@ test_5: all
 test_6: all
 	python3 grader.py --group section_perm
 
-.PHONY: all clean test check_compiler test_1 test_2 test_3 test_4 test_5 test_6
+retest: all
+	python3 grader.py -f
+
+.PHONY: all clean test check_compiler test_1 test_2 test_3 test_4 test_5 test_6 retest

@@ -21,7 +21,14 @@ def install_requirements(venv_path):
     requirements_path = Path(__file__).parent / "requirements.txt"
     print("Installing dependencies...", flush=True)
     subprocess.run(
-        [str(pip_path), "install", "-r", str(requirements_path), "-i", "https://pypi.tuna.tsinghua.edu.cn/simple"],
+        [
+            str(pip_path),
+            "install",
+            "-r",
+            str(requirements_path),
+            "-i",
+            "https://pypi.tuna.tsinghua.edu.cn/simple",
+        ],
         check=True,
     )
 
@@ -338,7 +345,9 @@ class CompositeChecker:
 
 
 class TestRunner:
-    def __init__(self, config: Config, console: Optional[Console] = None, verbose: bool = False):
+    def __init__(
+        self, config: Config, console: Optional[Console] = None, verbose: bool = False
+    ):
         self.config = config
         self.console = console
         self.checker = CompositeChecker()
@@ -623,10 +632,22 @@ class TestRunner:
         return_code: Optional[int] = None,
         expected_output: str = "",
     ) -> TestResult:
+        # 构造命令字符串
+        cmd = [self._resolve_path(step["command"], test.path)]
+        if "args" in step:
+            cmd.extend(
+                [
+                    self._resolve_path(str(arg), test.path)
+                    for arg in step.get("args", [])
+                ]
+            )
+        command_str = " ".join(cmd)
+
         error_details = {
             "step": step_index,
             "step_name": step.get("name", step["command"]),
             "error_message": message,
+            "command": command_str,  # 添加实际运行的命令
         }
         if stdout:
             error_details["stdout"] = stdout
@@ -782,11 +803,11 @@ class TableFormatter(ResultFormatter):
                 f"{test.meta['name']:<{col_widths['name']}} "
                 f"{status_text[result['status']]:<{col_widths['status']}} "
                 f"{result['time']:.2f}s".rjust(col_widths["time"])
-                + " " f"{result['score']:.1f}/{result['max_score']}".rjust(
+                + f" {result['score']:.1f}/{result['max_score']}".rjust(
                     col_widths["score"]
                 )
                 + " "
-                f"{result['message'][:col_widths['message']]:<{col_widths['message']}}"
+                f"{result['message'][: col_widths['message']]:<{col_widths['message']}}"
             )
             self.console.print(row)
 
@@ -796,7 +817,7 @@ class TableFormatter(ResultFormatter):
     def _print_summary(self, total_score: float, max_score: float) -> None:
         summary = Panel(
             f"[bold]Total Score: {total_score:.1f}/{max_score:.1f} "
-            f"({total_score/max_score*100:.1f}%)[/bold]",
+            f"({total_score / max_score * 100:.1f}%)[/bold]",
             border_style="green" if total_score == max_score else "yellow",
         )
         self.console.print()
@@ -807,7 +828,7 @@ class TableFormatter(ResultFormatter):
         self.console.print()
         self.console.print(
             f"Total Score: {total_score:.1f}/{max_score:.1f} "
-            f"({total_score/max_score*100:.1f}%)"
+            f"({total_score / max_score * 100:.1f}%)"
         )
         self.console.print()
 
@@ -823,17 +844,105 @@ class Grader:
         )
         self.results: Dict[str, TestResult] = {}
 
+    def _save_test_history(
+        self,
+        test_cases: List[TestCase],
+        test_results: List[Dict[str, Any]],
+        total_score: float,
+        max_score: float,
+    ) -> None:
+        """保存测试历史到隐藏文件"""
+        history_data = {
+            "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+            "total_score": round(total_score, 1),
+            "max_score": round(max_score, 1),
+            "percentage": round(total_score / max_score * 100, 1)
+            if max_score > 0
+            else 0,
+            "tests": [],
+        }
+
+        for test, result in zip(test_cases, test_results):
+            test_data = {
+                "name": test.meta["name"],
+                "description": test.meta.get("description", ""),
+                "path": str(test.path),
+                "build_path": str(test.path / "build"),
+                "score": result["score"],
+                "max_score": result["max_score"],
+                "status": result["status"],
+                "time": result["time"],
+                "message": result["message"],
+                "step_scores": result["step_scores"],
+            }
+
+            # 如果测试失败，添加详细的错误信息
+            if not result["success"] and result["error_details"]:
+                error_details = result["error_details"]
+                test_data["error_details"] = {
+                    "step": error_details["step"],
+                    "step_name": error_details["step_name"],
+                    "error_message": error_details["error_message"],
+                    "command": error_details.get("command", ""),  # 添加实际运行的命令
+                }
+                if "stdout" in error_details:
+                    test_data["error_details"]["stdout"] = error_details["stdout"]
+                if "stderr" in error_details:
+                    test_data["error_details"]["stderr"] = error_details["stderr"]
+                if "return_code" in error_details:
+                    test_data["error_details"]["return_code"] = error_details[
+                        "return_code"
+                    ]
+                if "expected_output" in error_details:
+                    test_data["error_details"]["expected_output"] = error_details[
+                        "expected_output"
+                    ]
+
+            history_data["tests"].append(test_data)
+
+        try:
+            # 读取现有历史记录（如果存在）
+            history_file = Path(".test_history")
+            if history_file.exists():
+                with open(history_file, "r", encoding="utf-8") as f:
+                    history = json.load(f)
+                # 限制历史记录数量为最近10次
+                history = history[-9:]
+            else:
+                history = []
+
+            # 添加新的测试记录
+            history.append(history_data)
+
+            # 保存更新后的历史记录
+            with open(history_file, "w", encoding="utf-8") as f:
+                json.dump(history, f, ensure_ascii=False, indent=2)
+
+        except Exception as e:
+            if not self.json_output:
+                self.console.print(
+                    f"[yellow]Warning:[/yellow] Failed to save test history: {str(e)}"
+                )
+
     def run_all_tests(
-        self, specific_test: Optional[str] = None, prefix_match: bool = False, group: Optional[str] = None
+        self,
+        specific_test: Optional[str] = None,
+        prefix_match: bool = False,
+        group: Optional[str] = None,
+        specific_paths: Optional[List[Path]] = None,
     ):
         if not self._run_setup_steps():
             sys.exit(1)
 
-        test_cases = self._load_test_cases(specific_test, prefix_match, group)
+        test_cases = self._load_test_cases(
+            specific_test, prefix_match, group, specific_paths
+        )
         if not self.json_output:
             # 如果是组测试，显示完整的组名
             if group and test_cases:
-                matched_group = next(g for g in self.config.groups if g.lower().startswith(group.lower()))
+                matched_group = next(
+                    g for g in self.config.groups if g.lower().startswith(group.lower())
+                )
                 self.console.print(
                     f"\n[bold]Running {len(test_cases)} test cases in group {matched_group}...[/bold]\n"
                 )
@@ -865,6 +974,9 @@ class Grader:
             max_score += result.max_score
 
         self.formatter.format_results(test_cases, test_results, total_score, max_score)
+
+        # 保存测试历史
+        self._save_test_history(test_cases, test_results, total_score, max_score)
 
     def _run_setup_steps(self) -> bool:
         for step in self.config.setup_steps:
@@ -915,8 +1027,31 @@ class Grader:
             return False
 
     def _load_test_cases(
-        self, specific_test: Optional[str] = None, prefix_match: bool = False, group: Optional[str] = None
+        self,
+        specific_test: Optional[str] = None,
+        prefix_match: bool = False,
+        group: Optional[str] = None,
+        specific_paths: Optional[List[Path]] = None,
     ) -> List[TestCase]:
+        # 如果指定了具体的测试路径，直接加载这些测试
+        if specific_paths:
+            test_cases = []
+            for test_path in specific_paths:
+                if test_path.is_dir() and (test_path / "config.toml").exists():
+                    test_cases.append(self._load_single_test(test_path))
+            if not test_cases:
+                if not self.json_output:
+                    self.console.print(
+                        "[red]Error:[/red] No valid test cases found in specified paths"
+                    )
+                else:
+                    print(
+                        "Error: No valid test cases found in specified paths",
+                        file=sys.stderr,
+                    )
+                sys.exit(1)
+            return test_cases
+
         # 如果指定了组，则从组配置中获取测试点列表
         if group:
             # 查找匹配的组名
@@ -924,36 +1059,56 @@ class Grader:
             for group_name in self.config.groups:
                 if group_name.lower().startswith(group.lower()):
                     matching_groups.append(group_name)
-            
+
             if not matching_groups:
                 if not self.json_output:
-                    self.console.print(f"[red]Error:[/red] No group matching '{group}' found in config")
+                    self.console.print(
+                        f"[red]Error:[/red] No group matching '{group}' found in config"
+                    )
                 else:
-                    print(f"Error: No group matching '{group}' found in config", file=sys.stderr)
+                    print(
+                        f"Error: No group matching '{group}' found in config",
+                        file=sys.stderr,
+                    )
                 sys.exit(1)
             elif len(matching_groups) > 1:
                 if not self.json_output:
-                    self.console.print(f"[yellow]Warning:[/yellow] Multiple groups match '{group}':")
+                    message = (
+                        f"[yellow]Warning:[/yellow] Multiple groups match '{group}':"
+                        if prefix_match and specific_test.isdigit()
+                        else f"[yellow]Warning:[/yellow] Multiple test cases start with '{specific_test}':"
+                    )
+                    self.console.print(message)
                     for g in matching_groups:
                         self.console.print(f"  - {g}")
                     self.console.print("Please be more specific in your group name.")
                 else:
-                    print(f"Error: Multiple groups match '{group}'", file=sys.stderr)
+                    message = (
+                        f"Error: Multiple groups match '{group}'"
+                        if prefix_match and specific_test.isdigit()
+                        else f"Error: Multiple test cases start with '{specific_test}'"
+                    )
+                    print(message, file=sys.stderr)
                 sys.exit(1)
-            
+
             group = matching_groups[0]
             test_cases = []
             for test_id in self.config.groups[group]:
                 cases = self._load_test_cases(test_id, True)
                 test_cases.extend(cases)
-            
+
             if not test_cases:
                 if not self.json_output:
-                    self.console.print(f"[red]Error:[/red] No test cases found in group '{group}'")
+                    self.console.print(
+                        f"[red]Error:[/red] No test cases found in group '{group}'"
+                    )
                 else:
-                    print(f"Error: No test cases found in group '{group}'", file=sys.stderr)
+                    print(
+                        f"Error: No test cases found in group '{group}'",
+                        file=sys.stderr,
+                    )
                 sys.exit(1)
-            
+
             return test_cases
 
         if specific_test:
@@ -1086,33 +1241,150 @@ class Grader:
 def main():
     parser = argparse.ArgumentParser(description="Grade student submissions")
     parser.add_argument(
-        "-j", "--json",
-        action="store_true",
-        help="Output results in JSON format"
+        "-j", "--json", action="store_true", help="Output results in JSON format"
     )
     parser.add_argument(
-        "-w", "--write-result",
+        "-w",
+        "--write-result",
         action="store_true",
         help="Write percentage score to .autograder_result file",
     )
     parser.add_argument(
-        "-p", "--prefix",
+        "-p",
+        "--prefix",
         action="store_true",
         help="Use number prefix exact matching mode for test case selection",
     )
     parser.add_argument(
-        "-g", "--group",
+        "-g",
+        "--group",
         help="Run all test cases in the specified group",
     )
     parser.add_argument(
-        "-v", "--verbose",
+        "-v",
+        "--verbose",
         action="store_true",
         help="Show detailed output of each test step",
+    )
+    parser.add_argument(
+        "-l",
+        "--get-last-failed",
+        action="store_true",
+        help="Read last test result and output command to set TEST_BUILD environment variable",
+    )
+    parser.add_argument(
+        "-f",
+        "--rerun-failed",
+        action="store_true",
+        help="Only run the test cases that failed in the last run",
     )
     parser.add_argument("test", nargs="?", help="Specific test to run")
     args = parser.parse_args()
 
     try:
+        # 如果是获取上次失败测试点的模式
+        if args.get_last_failed:
+            try:
+                history_file = Path(".test_history")
+                if not history_file.exists():
+                    print("No test history found", file=sys.stderr)
+                    sys.exit(1)
+
+                with open(history_file, "r", encoding="utf-8") as f:
+                    history = json.load(f)
+                    if not history:
+                        print("Test history is empty", file=sys.stderr)
+                        sys.exit(1)
+
+                    # 获取最近一次的测试结果
+                    last_result = history[-1]
+
+                    # 查找第一个失败的测试点
+                    for test in last_result["tests"]:
+                        if test["status"] != "PASS":
+                            # 直接输出build目录的路径
+                            print(f"export TEST_BUILD={test['build_path']}")
+                            sys.exit(0)
+
+                    print("No failed test found in last run", file=sys.stderr)
+                    sys.exit(1)
+
+            except Exception as e:
+                print(f"Error reading test history: {str(e)}", file=sys.stderr)
+                sys.exit(1)
+
+        # 如果是重新运行失败测试点的模式
+        if args.rerun_failed:
+            try:
+                history_file = Path(".test_history")
+                if not history_file.exists():
+                    print("No test history found", file=sys.stderr)
+                    sys.exit(1)
+
+                with open(history_file, "r", encoding="utf-8") as f:
+                    history = json.load(f)
+                    if not history:
+                        print("Test history is empty", file=sys.stderr)
+                        sys.exit(1)
+
+                    # 获取最近一次的测试结果
+                    last_result = history[-1]
+
+                    # 获取所有失败的测试点路径
+                    failed_paths = []
+                    for test in last_result["tests"]:
+                        if test["status"] != "PASS":
+                            failed_paths.append(Path(test["path"]))
+
+                    if not failed_paths:
+                        print("No failed test found in last run", file=sys.stderr)
+                        sys.exit(0)
+
+                    # 直接传入失败测试点的路径
+                    grader = Grader(json_output=args.json)
+                    grader.runner = TestRunner(
+                        grader.config, grader.console, verbose=args.verbose
+                    )
+                    grader.run_all_tests(specific_paths=failed_paths)
+
+                    # 检查是否所有测试都通过
+                    total_score = sum(
+                        result.score for result in grader.results.values()
+                    )
+                    max_score = sum(
+                        test.meta["score"]
+                        for test in grader._load_test_cases(specific_paths=failed_paths)
+                    )
+                    percentage = (total_score / max_score * 100) if max_score > 0 else 0
+
+                    # 如果需要写入结果文件
+                    if args.write_result:
+                        with open(".autograder_result", "w") as f:
+                            f.write(f"{percentage:.2f}")
+
+                    # 只要有测试点失败，输出提示信息
+                    if total_score < max_score:
+                        if not args.json:
+                            console = Console()
+                            console.print(
+                                "\n[bold yellow]To set TEST_BUILD environment variable to the failed test case's build directory:[/bold yellow]"
+                            )
+                            console.print(
+                                '$ [bold green]eval "$(python3 grader.py -l)"[/bold green]'
+                            )
+                        else:
+                            print(
+                                "\nTo set TEST_BUILD to the first failed test case's build directory, run:"
+                            )
+                            print('eval "$(python3 grader.py -l)"')
+
+                    # 只要不是0分就通过
+                    sys.exit(0 if percentage > 0 else 1)
+
+            except Exception as e:
+                print(f"Error reading test history: {str(e)}", file=sys.stderr)
+                sys.exit(1)
+
         grader = Grader(json_output=args.json)
         # 更新TestRunner的初始化
         grader.runner = TestRunner(grader.config, grader.console, verbose=args.verbose)
@@ -1130,6 +1402,22 @@ def main():
         if args.write_result:
             with open(".autograder_result", "w") as f:
                 f.write(f"{percentage:.2f}")
+
+        # 如果有测试点失败，输出提示信息
+        if total_score < max_score:
+            if not args.json:
+                console = Console()
+                console.print(
+                    "\n[bold yellow]To set TEST_BUILD environment variable to the failed test case's build directory:[/bold yellow]"
+                )
+                console.print(
+                    '$ [bold green]eval "$(python3 grader.py -l)"[/bold green]'
+                )
+            else:
+                print(
+                    "\nTo set TEST_BUILD to the first failed test case's build directory, run:"
+                )
+                print('eval "$(python3 grader.py -l)"')
 
         # 只要不是0分就通过
         sys.exit(0 if percentage > 0 else 1)
