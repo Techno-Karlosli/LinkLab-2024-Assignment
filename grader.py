@@ -423,11 +423,11 @@ class TestRunner:
 
                     if "stdout" in result.error_details:
                         self.console.print("\nActual output:")
-                        self.console.print(result.error_details["stdout"])
+                        self.console.print(result.error_details["stdout"].strip())
 
                     if "stderr" in result.error_details:
                         self.console.print("\nError output:")
-                        self.console.print(result.error_details["stderr"])
+                        self.console.print(result.error_details["stderr"].strip())
 
                     if "expected_output" in result.error_details:
                         self.console.print("\nExpected output:")
@@ -1243,6 +1243,33 @@ class Grader:
             sys.exit(1)
 
 
+def get_current_shell() -> str:
+    """
+    获取当前用户使用的shell类型
+    优先检查父进程，然后检查SHELL环境变量
+    返回值: 'bash', 'zsh', 'fish' 等
+    """
+    # 方法1: 检查父进程
+    try:
+        parent_pid = os.getppid()
+        with open(f"/proc/{parent_pid}/comm", "r") as f:
+            shell = f.read().strip()
+            if shell in ["bash", "zsh", "fish"]:
+                return shell
+    except:
+        pass
+
+    # 方法2: 通过SHELL环境变量
+    shell_path = os.environ.get("SHELL", "")
+    if shell_path:
+        shell = os.path.basename(shell_path)
+        if shell in ["bash", "zsh", "fish"]:
+            return shell
+
+    # 默认返回bash
+    return "bash"
+
+
 def main():
     parser = argparse.ArgumentParser(description="Grade student submissions")
     parser.add_argument(
@@ -1283,6 +1310,11 @@ def main():
         action="store_true",
         help="Only run the test cases that failed in the last run",
     )
+    parser.add_argument(
+        "--shell",
+        choices=["bash", "zsh", "fish"],
+        help="Manually specify shell type for environment variable commands",
+    )
     parser.add_argument("test", nargs="?", help="Specific test to run")
     args = parser.parse_args()
 
@@ -1307,8 +1339,14 @@ def main():
                     # 查找第一个失败的测试点
                     for test in last_result["tests"]:
                         if test["status"] != "PASS":
-                            # 直接输出build目录的路径
-                            print(f"export TEST_BUILD={test['build_path']}")
+                            # 获取shell类型
+                            shell_type = args.shell or get_current_shell()
+
+                            # 根据不同shell类型生成相应的命令
+                            if shell_type == "fish":
+                                print(f"set -x TEST_BUILD {test['build_path']}")
+                            else:  # bash 或 zsh
+                                print(f"export TEST_BUILD={test['build_path']}")
                             sys.exit(0)
 
                     print("No failed test found in last run", file=sys.stderr)
@@ -1371,17 +1409,29 @@ def main():
                     if total_score < max_score:
                         if not args.json:
                             console = Console()
+                            shell_type = args.shell or get_current_shell()
+
                             console.print(
                                 "\n[bold yellow]To set TEST_BUILD environment variable to the failed test case's build directory:[/bold yellow]"
                             )
-                            console.print(
-                                '$ [bold green]eval "$(python3 grader.py -l)"[/bold green]'
-                            )
+
+                            if shell_type == "fish":
+                                console.print(
+                                    "$ [bold green]python3 grader.py -l | source[/bold green]"
+                                )
+                            else:
+                                console.print(
+                                    '$ [bold green]eval "$(python3 grader.py -l)"[/bold green]'
+                                )
                         else:
+                            shell_type = args.shell or get_current_shell()
                             print(
                                 "\nTo set TEST_BUILD to the first failed test case's build directory, run:"
                             )
-                            print('eval "$(python3 grader.py -l)"')
+                            if shell_type == "fish":
+                                print("python3 grader.py -l | source")
+                            else:
+                                print('eval "$(python3 grader.py -l)"')
 
                     # 只要不是0分就通过
                     sys.exit(0 if percentage > 0 else 1)
@@ -1412,17 +1462,29 @@ def main():
         if total_score < max_score:
             if not args.json:
                 console = Console()
+                shell_type = args.shell or get_current_shell()
+
                 console.print(
                     "\n[bold yellow]To set TEST_BUILD environment variable to the failed test case's build directory:[/bold yellow]"
                 )
-                console.print(
-                    '$ [bold green]eval "$(python3 grader.py -l)"[/bold green]'
-                )
+
+                if shell_type == "fish":
+                    console.print(
+                        "$ [bold green]python3 grader.py -l | source[/bold green]"
+                    )
+                else:
+                    console.print(
+                        '$ [bold green]eval "$(python3 grader.py -l)"[/bold green]'
+                    )
             else:
+                shell_type = args.shell or get_current_shell()
                 print(
                     "\nTo set TEST_BUILD to the first failed test case's build directory, run:"
                 )
-                print('eval "$(python3 grader.py -l)"')
+                if shell_type == "fish":
+                    print("python3 grader.py -l | source")
+                else:
+                    print('eval "$(python3 grader.py -l)"')
 
         # 只要不是0分就通过
         sys.exit(0 if percentage > 0 else 1)
