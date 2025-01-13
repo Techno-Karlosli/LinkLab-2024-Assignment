@@ -1,5 +1,6 @@
 import argparse
 import json
+import os
 import re
 import subprocess
 import sys
@@ -15,6 +16,7 @@ def create_venv(venv_path):
     print("Creating virtual environment...", flush=True)
     venv.create(venv_path, with_pip=True)
     print(f"Virtual environment will be created at: {venv_path}", flush=True)
+
 
 def install_requirements(venv_path):
     pip_path = venv_path / ("Scripts" if sys.platform == "win32" else "bin") / "pip"
@@ -34,20 +36,20 @@ def install_requirements(venv_path):
 
 
 def ensure_venv():
-    import importlib.util
-    import os
-
     # 检查必需的包是否已安装
     try:
         import rich
         import tomli
+
         return True
     except ImportError:
         pass
 
     # 检查是否已经在递归调用中
     if os.environ.get("GRADER_VENV_SETUP") == "1":
-        print("Error: Failed to set up virtual environment after retry", file=sys.stderr)
+        print(
+            "Error: Failed to set up virtual environment after retry", file=sys.stderr
+        )
         sys.exit(1)
 
     # 如果缺少包,创建虚拟环境并安装
@@ -64,13 +66,16 @@ def ensure_venv():
         # 设置环境变量标记并重新运行
         env = os.environ.copy()
         env["GRADER_VENV_SETUP"] = "1"
-        subprocess.run([str(python_path), __file__] + sys.argv[1:], env=env, check=False)
+        subprocess.run(
+            [str(python_path), __file__] + sys.argv[1:], env=env, check=False
+        )
         return False
     except Exception as e:
         print(f"Error setting up virtual environment: {str(e)}", file=sys.stderr)
         # 如果虚拟环境创建失败，清理现有的虚拟环境
         if venv_dir.exists():
             import shutil
+
             shutil.rmtree(venv_dir)
         sys.exit(1)
 
