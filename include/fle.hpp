@@ -42,6 +42,7 @@ struct Symbol {
 };
 
 struct FLESection {
+    std::string name;
     std::vector<uint8_t> data; // Section data (stored as bytes)
     std::vector<Relocation> relocs; // Relocation table for this section
     bool has_symbols; // Whether section contains symbols

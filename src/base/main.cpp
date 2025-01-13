@@ -186,6 +186,7 @@ FLEObject load_fle(const std::string& file)
             }
         }
 
+        section.name = key;
         obj.sections[key] = section;
     }
 

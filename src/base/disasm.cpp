@@ -142,11 +142,11 @@ void FLE_disasm(const FLEObject& obj, const std::string& section_name)
         for (const auto& reloc : section.relocs) {
             reloc_map[reloc.offset].push_back(&reloc);
         }
+    }
 
-        for (const auto& sym : obj.symbols) {
-            if (sym.section == section_name) {
-                symbol_map[sym.offset] = &sym;
-            }
+    for (const auto& sym : obj.symbols) {
+        if (sym.section == section_name) {
+            symbol_map[sym.offset] = &sym;
         }
     }
 

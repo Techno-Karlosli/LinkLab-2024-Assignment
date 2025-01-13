@@ -13,6 +13,14 @@ void FLE_objdump(const FLEObject& obj, FLEWriter& writer)
         writer.write_entry(obj.entry);
     }
 
+    // 预处理：构建符号表索引
+    std::map<std::string, std::map<size_t, std::vector<Symbol>>> symbol_index;
+    for (const auto& sym : obj.symbols) {
+        if (sym.type != SymbolType::UNDEFINED) {
+            symbol_index[sym.section][sym.offset].push_back(sym);
+        }
+    }
+
     // 写入所有段的内容
     for (const auto& [name, section] : obj.sections) {
         writer.begin_section(name);
@@ -32,27 +40,29 @@ void FLE_objdump(const FLEObject& obj, FLEWriter& writer)
 
         size_t pos = 0;
         while (pos < section.data.size()) {
-            // 1. 检查当前位置是否有符号或重定位
-            for (const auto& sym : obj.symbols) {
-                if (sym.type == SymbolType::UNDEFINED) {
-                    continue;
-                }
-                if (sym.section == name && sym.offset == pos) {
-                    std::string line;
-                    switch (sym.type) {
-                    case SymbolType::LOCAL:
-                        line = "🏷️: " + sym.name;
-                        break;
-                    case SymbolType::WEAK:
-                        line = "📎: " + sym.name;
-                        break;
-                    case SymbolType::GLOBAL:
-                        line = "📤: " + sym.name;
-                        break;
-                    default:
-                        [[unlikely]] throw std::runtime_error("unknown symbol type");
+            // 1. 检查当前位置是否有符号
+            auto section_it = symbol_index.find(name);
+            if (section_it != symbol_index.end()) {
+                auto offset_it = section_it->second.find(pos);
+                if (offset_it != section_it->second.end()) {
+                    for (const auto& sym : offset_it->second) {
+                        std::string line;
+                        switch (sym.type) {
+                        case SymbolType::LOCAL:
+                            line = "🏷️: " + sym.name;
+                            break;
+                        case SymbolType::WEAK:
+                            line = "📎: " + sym.name;
+                            break;
+                        case SymbolType::GLOBAL:
+                            line = "📤: " + sym.name;
+                            break;
+                        default:
+                            [[unlikely]] throw std::runtime_error("unknown symbol type");
+                        }
+                        line += " " + std::to_string(sym.size) + " " + std::to_string(sym.offset);
+                        writer.write_line(line);
                     }
-                    writer.write_line(line);
                 }
             }
 
