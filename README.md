@@ -12,7 +12,7 @@
 
 > 每个程序员都用过链接器，但很少有人真正理解它。
 >
-> 在这个实验中，你将亲手实现一个链接器，揭开程序是如何被"拼接"在一起的秘密。我们设计了一个友好的目标文件格式（FLE），让你可以专注于理解链接的核心概念。
+> 在这个实验中，你将亲手实现一个链接器，揭开程序是如何被「拼接」在一起的秘密。我们设计了一个友好的目标文件格式（FLE），让你可以专注于理解链接的核心概念。
 
 > [!WARNING]
 > 这是 LinkLab 的第一个版本，可能存在一些问题。如果你：
@@ -1069,7 +1069,7 @@ $$
 ### 手动测试
 每个测试用例目录下都有 `config.toml` 文件描述了测试的执行步骤。当你运行 `make test` 或 `make test_<n>`，发现某个测试点未通过时，你可以：
 
-1. 设置 `TEST_BUILD` 环境变量，来表示最近一次测试中第一个失败的测试点的测试路径：`eval "$(python3 grader.py -l)"`
+1. 设置 `TEST_BUILD` 环境变量，来表示最近一次测试中第一个失败的测试点的测试路径：`eval "$(python3 grader.py -l)"`；如果使用 fish shell，则需要使用 `python3 grader.py -l | source`
 2. 对这个失败的测试点，重新运行你的链接器：`./ld ${TEST_BUILD}/a.fle ${TEST_BUILD}/b.fle -o ${TEST_BUILD}/out.fle`
 3. 使用 `readfle` 和 `disasm` 检查输出文件：`./readfle ${TEST_BUILD}/out.fle` 和 `./disasm ${TEST_BUILD}/out.fle <section>`
 
