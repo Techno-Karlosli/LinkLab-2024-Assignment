@@ -2,6 +2,7 @@
 #include "fle.hpp"
 #include "string_utils.hpp"
 #include <algorithm>
+#include <cstddef>
 #include <filesystem>
 #include <fmt/format.h>
 #include <regex>
@@ -284,6 +285,7 @@ void FLE_cc(const std::vector<std::string>& options)
     auto lines = splitlines(objdump_output);
     std::vector<SectionHeader> section_headers;
     std::vector<std::pair<std::string, bool>> sections_to_process;
+    size_t current_offset = 0;
 
     // 第一遍扫描:收集节头信息
     for (auto it = lines.begin(); it != lines.end(); ++it) {
@@ -307,7 +309,7 @@ void FLE_cc(const std::vector<std::string>& options)
         size_t size = std::stoul(match[4].str(), nullptr, 16);
 
         // 检查是否需要处理该节
-        if (!contains(flags, "ALLOC") || str_contains(section_name, "note.gnu.property")) {
+        if (!contains(flags, "ALLOC") || str_contains(section_name, "note.gnu.property") || size == 0) {
             continue;
         }
 
