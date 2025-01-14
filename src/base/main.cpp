@@ -1,5 +1,8 @@
 #include "fle.hpp"
 #include "string_utils.hpp"
+#include <csignal>
+#include <cstdint>
+#include <execinfo.h>
 #include <fstream>
 #include <iostream>
 #include <regex>
@@ -8,6 +11,45 @@
 #include <vector>
 
 using namespace std::string_literals;
+
+void segv_handler(int sig, siginfo_t* si, void* ctx)
+{
+    auto uctx = reinterpret_cast<ucontext_t*>(ctx);
+
+    // 发生段错误的指令地址
+    auto rip = uctx->uc_mcontext.gregs[REG_RIP];
+
+    // 出错访问的地址
+    void* fault_addr = si->si_addr;
+
+    // call 指令前，会先往栈里压入返回地址，RSP 指向栈顶。
+    // 这里尝试从栈顶读取 8 字节（对于 x86_64）当作返回地址
+    auto rsp = uctx->uc_mcontext.gregs[REG_RSP];
+    void* call_site_next = 0;
+    // 这里要确保 rsp 是可读，且内存布局正常
+    // 对于因为错误跳转而崩溃的大多数场景，下面的读取通常可行
+    if (rsp != 0) {
+        // 取到栈顶存放的返回地址
+        call_site_next = reinterpret_cast<void*>(*reinterpret_cast<uint64_t*>(rsp));
+    }
+
+    fprintf(stderr, "Caught SIGSEGV at address: %p\n", fault_addr);
+    fflush(stderr);
+    fprintf(stderr, "Error code: %d\n", si->si_code);
+    fflush(stderr);
+    fprintf(stderr, "Instruction at: %p\n", reinterpret_cast<void*>(rip));
+    fflush(stderr);
+    // call_site_next 是 call 指令推入的“返回地址”，即 call 指令自身之后的那条指令地址
+    // 它通常比 call 指令的开头多 5~7 个字节（具体看是否是 call rel32 或 call r/m64 等）
+    // 因此可用 call_site_next - offset 推算出 call 指令的开头
+    fprintf(stderr, "Likely return address: %p\n", call_site_next);
+    fflush(stderr);
+
+    // 恢复默认的信号处理程序
+    signal(SIGSEGV, SIG_DFL);
+    // 重新抛出信号
+    raise(sig);
+}
 
 // 辅助函数：解析程序头
 static void parse_program_headers(const json& j, FLEObject& obj)
@@ -195,6 +237,14 @@ FLEObject load_fle(const std::string& file)
 
 int main(int argc, char* argv[])
 {
+    struct sigaction sa;
+    sa.sa_flags = SA_SIGINFO | SA_ONSTACK;
+    sa.sa_sigaction = segv_handler;
+    if (sigaction(SIGSEGV, &sa, NULL) == -1) {
+        std::cerr << "Failed to set up signal handler for SIGSEGV" << std::endl;
+        return 1;
+    }
+
     if (argc < 2) {
         std::cerr << "Usage: " << argv[0] << " <command> [args...]\n"
                   << "Commands:\n"
