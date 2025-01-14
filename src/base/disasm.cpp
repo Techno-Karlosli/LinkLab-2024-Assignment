@@ -16,7 +16,8 @@ std::string exec_command(const std::string& cmd)
 {
     std::array<char, 128> buffer;
     std::string result;
-    std::unique_ptr<FILE, decltype(&pclose)> pipe(popen(cmd.c_str(), "r"), pclose);
+    using pclose_fn = int (*)(FILE*);
+    std::unique_ptr<FILE, pclose_fn> pipe(popen(cmd.c_str(), "r"), pclose);
 
     if (!pipe) {
         throw std::runtime_error("Failed to execute command: " + cmd);
