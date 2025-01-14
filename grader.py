@@ -5,6 +5,7 @@ import re
 import subprocess
 import sys
 import time
+import traceback
 import venv
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
@@ -457,6 +458,8 @@ class TestRunner:
                 max_score=test.meta["score"],
             )
         except Exception as e:
+            print(e)
+            print(traceback.format_exc())
             return TestResult(
                 success=False,
                 message=f"Error: {str(e)}",
@@ -480,6 +483,7 @@ class TestRunner:
             if has_step_scores
             else test.meta["score"]
         )
+        steps_error_details = []
 
         for i, step in enumerate(test.run_steps, 1):
             if progress is not None and task is not None:
@@ -491,10 +495,12 @@ class TestRunner:
                 )
 
             result = self._execute_single_step(test, step, i)
-            if not result.success and step.get("must_pass", True):
+            if not result.success:
+                steps_error_details.append(result.error_details)
                 if progress is not None and task is not None:
                     progress.update(task, completed=i)
-                return result
+                if step.get("must_pass", True):
+                    return result
             total_score += result.score
             if result.step_scores:
                 step_scores.extend(result.step_scores)
@@ -521,7 +527,7 @@ class TestRunner:
             score=total_score,
             max_score=max_possible_score,
             step_scores=step_scores,
-            error_details=None,
+            error_details=steps_error_details[0] if steps_error_details else None,
         )
 
     def _execute_single_step(
@@ -936,52 +942,79 @@ class Grader:
         group: Optional[str] = None,
         specific_paths: Optional[List[Path]] = None,
     ):
-        if not self._run_setup_steps():
-            sys.exit(1)
+        try:
+            if not self._run_setup_steps():
+                sys.exit(1)
 
-        test_cases = self._load_test_cases(
-            specific_test, prefix_match, group, specific_paths
-        )
-        if not self.json_output:
-            # 如果是组测试，显示完整的组名
-            if group and test_cases:
-                matched_group = next(
-                    g for g in self.config.groups if g.lower().startswith(group.lower())
-                )
-                self.console.print(
-                    f"\n[bold]Running {len(test_cases)} test cases in group {matched_group}...[/bold]\n"
-                )
+            test_cases = self._load_test_cases(
+                specific_test, prefix_match, group, specific_paths
+            )
+            if not self.json_output:
+                # 如果是组测试，显示完整的组名
+                if group and test_cases:
+                    matched_group = next(
+                        g
+                        for g in self.config.groups
+                        if g.lower().startswith(group.lower())
+                    )
+                    self.console.print(
+                        f"\n[bold]Running {len(test_cases)} test cases in group {matched_group}...[/bold]\n"
+                    )
+                else:
+                    self.console.print(
+                        f"\n[bold]Running {len(test_cases)} test cases...[/bold]\n"
+                    )
+
+            total_score = 0
+            max_score = 0
+            test_results = []
+
+            for test in test_cases:
+                try:
+                    result = self.runner.run_test(test)
+                except Exception as e:
+                    if not self.json_output:
+                        self.console.print(
+                            f"[red]Error:[/red] Grader script error while running test '{test.meta['name']}': {str(e)}"
+                        )
+                    else:
+                        print(
+                            f"Error: Grader script error while running test '{test.meta['name']}': {str(e)}",
+                            file=sys.stderr,
+                        )
+                    sys.exit(1)
+
+                self.results[test.path.name] = result
+                result_dict = {
+                    "name": test.meta["name"],
+                    "success": result.success,
+                    "status": result.status,
+                    "time": round(result.time, 2),
+                    "score": result.score,
+                    "max_score": result.max_score,
+                    "step_scores": result.step_scores,
+                    "message": result.message,
+                    "error_details": result.error_details,
+                }
+                test_results.append(result_dict)
+                total_score += result.score
+                max_score += result.max_score
+
+            self.formatter.format_results(
+                test_cases, test_results, total_score, max_score
+            )
+
+            # 保存测试历史
+            self._save_test_history(test_cases, test_results, total_score, max_score)
+
+            return total_score, max_score
+
+        except Exception as e:
+            if not self.json_output:
+                self.console.print(f"[red]Error:[/red] Grader script error: {str(e)}")
             else:
-                self.console.print(
-                    f"\n[bold]Running {len(test_cases)} test cases...[/bold]\n"
-                )
-
-        total_score = 0
-        max_score = 0
-        test_results = []
-
-        for test in test_cases:
-            result = self.runner.run_test(test)
-            self.results[test.path.name] = result
-            result_dict = {
-                "name": test.meta["name"],
-                "success": result.success,
-                "status": result.status,
-                "time": round(result.time, 2),
-                "score": result.score,
-                "max_score": result.max_score,
-                "step_scores": result.step_scores,
-                "message": result.message,
-                "error_details": result.error_details,
-            }
-            test_results.append(result_dict)
-            total_score += result.score
-            max_score += result.max_score
-
-        self.formatter.format_results(test_cases, test_results, total_score, max_score)
-
-        # 保存测试历史
-        self._save_test_history(test_cases, test_results, total_score, max_score)
+                print(f"Error: Grader script error: {str(e)}", file=sys.stderr)
+            sys.exit(1)
 
     def _run_setup_steps(self) -> bool:
         for step in self.config.setup_steps:
@@ -1443,14 +1476,10 @@ def main():
         grader = Grader(json_output=args.json)
         # 更新TestRunner的初始化
         grader.runner = TestRunner(grader.config, grader.console, verbose=args.verbose)
-        grader.run_all_tests(args.test, prefix_match=args.prefix, group=args.group)
-
-        # 检查是否所有测试都通过
-        total_score = sum(result.score for result in grader.results.values())
-        max_score = sum(
-            test.meta["score"]
-            for test in grader._load_test_cases(args.test, args.prefix, args.group)
+        total_score, max_score = grader.run_all_tests(
+            args.test, prefix_match=args.prefix, group=args.group
         )
+
         percentage = (total_score / max_score * 100) if max_score > 0 else 0
 
         # 如果需要写入结果文件
