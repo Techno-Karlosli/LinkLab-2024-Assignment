@@ -304,6 +304,7 @@ void FLE_cc(const std::vector<std::string>& options)
         while (std::getline(ss, flag, ',')) {
             flags.push_back(trim(flag));
         }
+        size_t size = std::stoul(match[4].str(), nullptr, 16);
 
         // 检查是否需要处理该节
         if (!contains(flags, "ALLOC") || str_contains(section_name, "note.gnu.property")) {
@@ -330,10 +331,11 @@ void FLE_cc(const std::vector<std::string>& options)
             .type = static_cast<uint32_t>(is_nobits ? 8 : 1),
             .flags = sh_flags,
             .addr = 0,
-            .offset = 0,
-            .size = std::stoul(match[4].str(), nullptr, 16),
+            .offset = current_offset,
+            .size = size,
         });
 
+        current_offset += size;
         sections_to_process.emplace_back(section_name, is_nobits);
     }
 
