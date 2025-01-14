@@ -27,6 +27,10 @@ void FLE_objdump(const FLEObject& obj, FLEWriter& writer)
         auto shdr = std::find_if(obj.shdrs.begin(), obj.shdrs.end(), [name](const auto& shdr) {
             return shdr.name == name;
         });
+        if (shdr == obj.shdrs.end()) {
+            sections.push_back({ name, 0, section });
+            continue;
+        }
         sections.push_back({ name, shdr->offset, section });
     }
     std::sort(sections.begin(), sections.end(), [](const auto& a, const auto& b) {
