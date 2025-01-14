@@ -1,4 +1,5 @@
 #include "fle.hpp"
+#include <algorithm>
 #include <iomanip>
 #include <iostream>
 #include <sstream>
@@ -21,8 +22,19 @@ void FLE_objdump(const FLEObject& obj, FLEWriter& writer)
         }
     }
 
-    // 写入所有段的内容
+    std::vector<std::tuple<std::string, size_t, FLESection>> sections;
     for (const auto& [name, section] : obj.sections) {
+        auto shdr = std::find_if(obj.shdrs.begin(), obj.shdrs.end(), [name](const auto& shdr) {
+            return shdr.name == name;
+        });
+        sections.push_back({ name, shdr->offset, section });
+    }
+    std::sort(sections.begin(), sections.end(), [](const auto& a, const auto& b) {
+        return std::get<1>(a) < std::get<1>(b);
+    });
+
+    // 写入所有段的内容
+    for (const auto& [name, _, section] : sections) {
         writer.begin_section(name);
 
         // 收集所有断点（符号和重定位的位置）

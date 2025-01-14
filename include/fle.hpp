@@ -157,7 +157,7 @@ public:
 
 private:
     std::string current_section;
-    nlohmann::ordered_json result;
+    json result;
     std::vector<std::string> current_lines;
 };
 
