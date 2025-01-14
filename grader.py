@@ -37,46 +37,52 @@ def install_requirements(venv_path):
 
 
 def ensure_venv():
-    # 检查必需的包是否已安装
+    # 首先检查本地是否已安装必需的包
     try:
         import rich
         import tomli
-
         return True
     except ImportError:
         pass
-
-    # 检查是否已经在递归调用中
-    if os.environ.get("GRADER_VENV_SETUP") == "1":
-        print(
-            "Error: Failed to set up virtual environment after retry", file=sys.stderr
-        )
-        sys.exit(1)
-
-    # 如果缺少包,创建虚拟环境并安装
+    
     venv_dir = Path(__file__).parent / ".venv"
-    python_path = (
-        venv_dir / ("Scripts" if sys.platform == "win32" else "bin") / "python"
-    )
-
+    python_path = venv_dir / ("Scripts" if sys.platform == "win32" else "bin") / "python"
+    
+    # 检查是否已在虚拟环境中运行
+    if os.environ.get("VIRTUAL_ENV"):
+        # 已在虚拟环境中，安装缺失的依赖
+        try:
+            install_requirements(venv_dir)
+            return True
+        except Exception as e:
+            print(f"Error installing dependencies in virtual environment: {str(e)}", file=sys.stderr)
+            sys.exit(1)
+            
+    # 检查是否正在重试安装
+    if os.environ.get("GRADER_VENV_SETUP") == "1":
+        print("Error: Failed to set up virtual environment after retry", file=sys.stderr)
+        sys.exit(1)
+        
     try:
-        if not venv_dir.exists():
+        # 如果存在虚拟环境，直接使用
+        if venv_dir.exists() and python_path.exists():
+            pass
+        else:
+            # 创建新的虚拟环境
             create_venv(venv_dir)
-        install_requirements(venv_dir)
-
-        # 设置环境变量标记并重新运行
+            install_requirements(venv_dir)
+            
+        # 使用虚拟环境重新运行脚本
         env = os.environ.copy()
         env["GRADER_VENV_SETUP"] = "1"
-        subprocess.run(
-            [str(python_path), __file__] + sys.argv[1:], env=env, check=False
-        )
+        subprocess.run([str(python_path), __file__] + sys.argv[1:], env=env, check=False)
         return False
+        
     except Exception as e:
         print(f"Error setting up virtual environment: {str(e)}", file=sys.stderr)
         # 如果虚拟环境创建失败，清理现有的虚拟环境
         if venv_dir.exists():
             import shutil
-
             shutil.rmtree(venv_dir)
         sys.exit(1)
 
