@@ -19,9 +19,17 @@ inline std::string get_filename_without_extension(std::string_view path)
 // 文件路径相关函数
 inline std::string trim(std::string_view s)
 {
-    s.remove_prefix(std::min(s.find_first_not_of(" \t"), s.size()));
-    s.remove_suffix(s.size() - s.find_last_not_of(" \t") - 1);
-    return std::string(s);
+    if (s.empty())
+        return std::string();
+
+    const auto start = std::min(s.find_first_not_of(" \t"), s.size());
+    const auto end = s.find_last_not_of(" \t");
+
+    // 如果字符串全是空白字符
+    if (end == std::string_view::npos)
+        return std::string();
+
+    return std::string(s.substr(start, end - start + 1));
 }
 
 inline std::string trim(std::string_view s, std::string_view chars)

@@ -107,7 +107,10 @@ void FLE_objdump(const FLEObject& obj, FLEWriter& writer)
 
                 for (size_t i = 0; i < chunk_size; ++i) {
                     ss << std::hex << std::setw(2) << std::setfill('0')
-                       << static_cast<int>(section.data[pos + i]) << " ";
+                       << static_cast<int>(section.data[pos + i]);
+                    if (i < chunk_size - 1) {
+                        ss << " ";
+                    }
                 }
                 writer.write_line(ss.str());
                 pos += chunk_size;
