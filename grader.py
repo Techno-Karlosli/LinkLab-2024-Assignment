@@ -41,13 +41,16 @@ def ensure_venv():
     try:
         import rich
         import tomli
+
         return True
     except ImportError:
         pass
-    
+
     venv_dir = Path(__file__).parent / ".venv"
-    python_path = venv_dir / ("Scripts" if sys.platform == "win32" else "bin") / "python"
-    
+    python_path = (
+        venv_dir / ("Scripts" if sys.platform == "win32" else "bin") / "python"
+    )
+
     # 检查是否已在虚拟环境中运行
     if os.environ.get("VIRTUAL_ENV"):
         # 已在虚拟环境中，安装缺失的依赖
@@ -55,14 +58,19 @@ def ensure_venv():
             install_requirements(venv_dir)
             return True
         except Exception as e:
-            print(f"Error installing dependencies in virtual environment: {str(e)}", file=sys.stderr)
+            print(
+                f"Error installing dependencies in virtual environment: {str(e)}",
+                file=sys.stderr,
+            )
             sys.exit(1)
-            
+
     # 检查是否正在重试安装
     if os.environ.get("GRADER_VENV_SETUP") == "1":
-        print("Error: Failed to set up virtual environment after retry", file=sys.stderr)
+        print(
+            "Error: Failed to set up virtual environment after retry", file=sys.stderr
+        )
         sys.exit(1)
-        
+
     try:
         # 如果存在虚拟环境，直接使用
         if venv_dir.exists() and python_path.exists():
@@ -71,18 +79,21 @@ def ensure_venv():
             # 创建新的虚拟环境
             create_venv(venv_dir)
             install_requirements(venv_dir)
-            
+
         # 使用虚拟环境重新运行脚本
         env = os.environ.copy()
         env["GRADER_VENV_SETUP"] = "1"
-        subprocess.run([str(python_path), __file__] + sys.argv[1:], env=env, check=False)
+        subprocess.run(
+            [str(python_path), __file__] + sys.argv[1:], env=env, check=False
+        )
         return False
-        
+
     except Exception as e:
         print(f"Error setting up virtual environment: {str(e)}", file=sys.stderr)
         # 如果虚拟环境创建失败，清理现有的虚拟环境
         if venv_dir.exists():
             import shutil
+
             shutil.rmtree(venv_dir)
         sys.exit(1)
 
@@ -150,7 +161,10 @@ class Config:
                     "tests_dir": "tests",
                     "cases_dir": "tests/cases",
                     "common_dir": "tests/common",
-                }
+                },
+                "debug": {
+                    "default_type": "gdb",  # or "lldb", "python"
+                },
             }
         with open(config_path, "rb") as f:
             return tomli.load(f)
@@ -171,6 +185,16 @@ class Config:
     def groups(self) -> Dict[str, List[str]]:
         """获取测试组配置"""
         return self._config.get("groups", {})
+
+    @property
+    def debug_config(self) -> Dict[str, Any]:
+        """Get debug configuration from config file"""
+        return self._config.get(
+            "debug",
+            {
+                "default_type": "gdb",
+            },
+        )
 
 
 class OutputChecker(Protocol):
@@ -358,12 +382,19 @@ class CompositeChecker:
 
 class TestRunner:
     def __init__(
-        self, config: Config, console: Optional[Console] = None, verbose: bool = False
+        self,
+        config: Config,
+        console: Optional[Console] = None,
+        verbose: bool = False,
+        dry_run: bool = False,
+        no_check: bool = False,
     ):
         self.config = config
         self.console = console
         self.checker = CompositeChecker()
         self.verbose = verbose
+        self.dry_run = dry_run
+        self.no_check = no_check
 
     def run_test(self, test: TestCase) -> TestResult:
         start_time = time.perf_counter()
@@ -375,6 +406,16 @@ class TestRunner:
                     if file.is_file():
                         file.unlink()
             build_dir.mkdir(exist_ok=True)
+
+            # 在dry-run模式下，显示测试点信息
+            if self.dry_run:
+                if self.console and not isinstance(self.console, type):
+                    self.console.print(f"[bold]Test case:[/bold] {test.meta['name']}")
+                    if "description" in test.meta:
+                        self.console.print(
+                            f"[bold]Description:[/bold] {test.meta['description']}"
+                        )
+                return self._execute_test_steps(test)
 
             result = None
             if self.console and not isinstance(self.console, type):
@@ -410,23 +451,14 @@ class TestRunner:
                     )
 
                 # 如果测试失败，在进度显示完成后输出失败信息
-                if not result.success:
+                if not result.success and not self.dry_run:
                     # 获取失败的步骤信息
                     step_index = result.error_details["step"]
-                    step = test.run_steps[step_index - 1]
-                    cmd = [self._resolve_path(step["command"], test.path)]
-                    if "args" in step:
-                        cmd.extend(
-                            [
-                                self._resolve_path(str(arg), test.path)
-                                for arg in step.get("args", [])
-                            ]
-                        )
 
                     self.console.print(
                         f"\n[red]Test '{test.meta['name']}' failed at step {step_index}:[/red]"
                     )
-                    self.console.print(f"Command: {' '.join(cmd)}")
+                    self.console.print(f"Command: {result.error_details['command']}")
 
                     if "stdout" in result.error_details:
                         self.console.print("\nActual output:")
@@ -501,7 +533,7 @@ class TestRunner:
                 )
 
             result = self._execute_single_step(test, step, i)
-            if not result.success:
+            if not result.success and not self.dry_run:
                 steps_error_details.append(result.error_details)
                 if progress is not None and task is not None:
                     progress.update(task, completed=i)
@@ -525,7 +557,7 @@ class TestRunner:
             total_score = test.meta["score"]
             step_scores = None
 
-        success = total_score > 0
+        success = True if self.dry_run else total_score > 0
         return TestResult(
             success=success,
             message="All steps completed" if success else "Some steps failed",
@@ -540,8 +572,44 @@ class TestRunner:
         self, test: TestCase, step: Dict[str, Any], step_index: int
     ) -> TestResult:
         start_time = time.perf_counter()
-        cmd = [self._resolve_path(step["command"], test.path)]
-        args = [self._resolve_path(str(arg), test.path) for arg in step.get("args", [])]
+
+        # 在dry-run模式下，只打印命令
+        if self.dry_run:
+            cmd = [self._resolve_path(step["command"], test.path)]
+            args = [
+                self._resolve_path(str(arg), test.path) for arg in step.get("args", [])
+            ]
+            if self.console and not isinstance(self.console, type):
+                self.console.print(f"\n[bold cyan]Step {step_index}:[/bold cyan]")
+                if "name" in step:
+                    self.console.print(f"[bold]Name:[/bold] {step['name']}")
+                self.console.print(f"[bold]Command:[/bold] {' '.join(cmd + args)}")
+                if "stdin" in step:
+                    self.console.print(f"[bold]Input file:[/bold] {step['stdin']}")
+                if "check" in step and not self.no_check:
+                    self.console.print("[bold]Checks:[/bold]")
+                    for check_type, check_value in step["check"].items():
+                        if check_type == "files":
+                            check_value = [
+                                self._resolve_path(file, test.path)
+                                for file in check_value
+                            ]
+
+                        self.console.print(f"  - {check_type}: {check_value}")
+            return TestResult(
+                success=True,
+                message="Dry run",
+                time=time.perf_counter() - start_time,
+                score=0,
+                max_score=0,
+            )
+
+        # 获取相对于测试目录的命令路径
+        cmd = [self._resolve_path(step["command"], test.path, test.path)]
+        args = [
+            self._resolve_path(str(arg), test.path, test.path)
+            for arg in step.get("args", [])
+        ]
 
         try:
             process = subprocess.run(
@@ -567,6 +635,15 @@ class TestRunner:
 
         except subprocess.TimeoutExpired:
             return self._create_timeout_result(test, step, step_index, start_time)
+
+        # 在no_check模式下，只要命令执行成功就认为通过
+        if self.no_check:
+            return self._create_success_result(
+                test,
+                step,
+                step.get("score", test.meta["score"]) if process.returncode == 0 else 0,
+                start_time,
+            )
 
         if "check" in step:
             success, message, score = self.checker.check(
@@ -594,19 +671,22 @@ class TestRunner:
 
         return self._create_success_result(test, step, score, start_time)
 
-    def _resolve_path(self, path: str, test_dir: Path) -> str:
+    def _resolve_path(self, path: str, test_dir: Path, cwd: Path = os.getcwd()) -> str:
         build_dir = test_dir / "build"
         build_dir.mkdir(exist_ok=True)
 
         replacements = {
-            "${test_dir}": str(test_dir),
-            "${common_dir}": str(self.config.paths["common_dir"]),
-            "${root_dir}": str(self.config.project_root),
-            "${build_dir}": str(build_dir),
+            "${test_dir}": str(test_dir.relative_to(cwd, walk_up=True)),
+            "${common_dir}": str(
+                self.config.paths["common_dir"].relative_to(cwd, walk_up=True)
+            ),
+            "${root_dir}": str(self.config.project_root.relative_to(cwd, walk_up=True)),
+            "${build_dir}": str(build_dir.relative_to(cwd, walk_up=True)),
         }
 
         for var, value in replacements.items():
             path = path.replace(var, value)
+
         return path
 
     def _get_stdin_data(self, test: TestCase, step: Dict[str, Any]) -> Optional[str]:
@@ -650,11 +730,11 @@ class TestRunner:
         expected_output: str = "",
     ) -> TestResult:
         # 构造命令字符串
-        cmd = [self._resolve_path(step["command"], test.path)]
+        cmd = [self._resolve_path(step["command"], test.path, os.getcwd())]
         if "args" in step:
             cmd.extend(
                 [
-                    self._resolve_path(str(arg), test.path)
+                    self._resolve_path(str(arg), test.path, os.getcwd())
                     for arg in step.get("args", [])
                 ]
             )
@@ -850,16 +930,238 @@ class TableFormatter(ResultFormatter):
         self.console.print()
 
 
+class VSCodeConfigGenerator:
+    """Generate and manage VS Code debug configurations"""
+
+    def __init__(self, project_root: Path, config: Config):
+        self.project_root = project_root
+        self.config = config
+        self.vscode_dir = project_root / ".vscode"
+        self.launch_file = self.vscode_dir / "launch.json"
+        self.tasks_file = self.vscode_dir / "tasks.json"
+
+    def generate_configs(
+        self, test_case: TestCase, failed_step: Dict[str, Any], merge: bool = True
+    ) -> None:
+        """Generate VS Code configurations for debugging a failed test step"""
+        self.vscode_dir.mkdir(exist_ok=True)
+
+        # Generate or update launch.json
+        launch_config = self._generate_launch_config(test_case, failed_step)
+        self._write_or_merge_json(
+            self.launch_file, launch_config, "configurations", merge
+        )
+
+        # Generate or update tasks.json
+        tasks_config = self._generate_tasks_config(test_case)
+        self._write_or_merge_json(self.tasks_file, tasks_config, "tasks", merge)
+
+    def _generate_launch_config(
+        self, test_case: TestCase, failed_step: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Generate launch configuration based on debug type"""
+        debug_type = (
+            failed_step.get("debug", {}).get("type")
+            or test_case.meta.get("debug", {}).get("type")
+            or self.config.debug_config["default_type"]
+        )
+
+        cwd = str(self.config.project_root)
+        program = self._resolve_path(
+            failed_step["command"], test_case.path, self.config.project_root
+        )
+        args = [
+            self._resolve_path(arg, test_case.path, self.config.project_root)
+            for arg in failed_step.get("args", [])
+        ]
+
+        if debug_type == "cpp":
+            configs = []
+            base_name = f"Debug {test_case.meta['name']} - Step {failed_step.get('name', 'failed step')}"
+
+            # Add GDB configuration
+            configs.append(
+                {
+                    "name": f"{base_name} (GDB)",
+                    "type": "cppdbg",
+                    "request": "launch",
+                    "program": program,
+                    "args": args,
+                    "stopOnEntry": True,
+                    "cwd": cwd,
+                    "environment": [],
+                    "internalConsoleOptions": "neverOpen",
+                    "MIMode": "gdb",
+                    "setupCommands": [
+                        {
+                            "description": "Enable pretty-printing for gdb",
+                            "text": "-enable-pretty-printing",
+                            "ignoreFailures": True,
+                        }
+                    ],
+                    "preLaunchTask": f"build-{test_case.path.name}",
+                }
+            )
+
+            # Add LLDB configuration
+            configs.append(
+                {
+                    "name": f"{base_name} (LLDB)",
+                    "type": "lldb",
+                    "request": "launch",
+                    "program": program,
+                    "args": args,
+                    "cwd": cwd,
+                    "internalConsoleOptions": "neverOpen",
+                    "preLaunchTask": f"build-{test_case.path.name}",
+                }
+            )
+
+            return {"configurations": configs}
+        elif debug_type == "python":
+            return {
+                "configurations": [
+                    {
+                        "name": f"Debug {test_case.meta['name']} - Step {failed_step.get('name', 'failed step')}",
+                        "type": "python",
+                        "request": "launch",
+                        "program": program,
+                        "args": args,
+                        "cwd": cwd,
+                        "env": {},
+                        "console": "integratedTerminal",
+                        "justMyCode": False,
+                        "preLaunchTask": f"build-{test_case.path.name}",
+                    }
+                ]
+            }
+        else:
+            raise ValueError(f"Unsupported debug type: {debug_type}")
+
+    def _generate_tasks_config(self, test_case: TestCase) -> Dict[str, Any]:
+        """Generate tasks configuration for building the test case"""
+        return {
+            "version": "2.0.0",
+            "tasks": [
+                {
+                    "label": f"build-{test_case.path.name}",
+                    "type": "shell",
+                    "command": "python3",
+                    "args": ["grader.py", "--no-check", test_case.path.name],
+                    "group": {"kind": "build", "isDefault": True},
+                    "presentation": {"panel": "shared"},
+                    "options": {"env": {"DEBUG": "1"}},
+                }
+            ],
+        }
+
+    def _write_or_merge_json(
+        self,
+        file_path: Path,
+        new_config: Dict[str, Any],
+        merge_key: str,
+        should_merge: bool,
+    ) -> None:
+        """Write or merge JSON configuration file"""
+        # Add comment to mark auto-generated configurations
+        if merge_key == "configurations":
+            for config in new_config[merge_key]:
+                config["name"] = f"{config['name']} [Auto-generated]"
+                config["preLaunchTask"] = f"{config['preLaunchTask']} [Auto-generated]"
+        elif merge_key == "tasks":
+            for task in new_config[merge_key]:
+                task["label"] = f"{task['label']} [Auto-generated]"
+
+        if file_path.exists() and should_merge:
+            try:
+                with open(file_path) as f:
+                    existing_config = json.load(f)
+
+                # Merge configurations
+                if merge_key in existing_config:
+                    # Remove previous auto-generated configs and configs with same name
+                    existing_items = []
+                    new_names = {
+                        item[
+                            "name" if merge_key == "configurations" else "label"
+                        ].replace(" [Auto-generated]", "")
+                        for item in new_config[merge_key]
+                    }
+
+                    for item in existing_config[merge_key]:
+                        item_name = item[
+                            "name" if merge_key == "configurations" else "label"
+                        ].replace(" [Auto-generated]", "")
+                        if (
+                            item_name not in new_names
+                            and not item.get("name", "").endswith("[Auto-generated]")
+                            and not item.get("label", "").endswith("[Auto-generated]")
+                        ):
+                            existing_items.append(item)
+
+                    existing_config[merge_key] = existing_items
+                    existing_config[merge_key].extend(new_config[merge_key])
+                else:
+                    existing_config[merge_key] = new_config[merge_key]
+
+                config_to_write = existing_config
+            except json.JSONDecodeError:
+                config_to_write = new_config
+        else:
+            config_to_write = new_config
+
+        with open(file_path, "w") as f:
+            json.dump(config_to_write, f, indent=4)
+
+    def _resolve_path(self, path: str, test_dir: Path, cwd: Path = os.getcwd()) -> str:
+        build_dir = test_dir / "build"
+        build_dir.mkdir(exist_ok=True)
+
+        replacements = {
+            "${test_dir}": str(test_dir.relative_to(cwd, walk_up=True)),
+            "${common_dir}": str(
+                self.config.paths["common_dir"].relative_to(cwd, walk_up=True)
+            ),
+            "${root_dir}": str(self.config.project_root.relative_to(cwd, walk_up=True)),
+            "${build_dir}": str(build_dir.relative_to(cwd, walk_up=True)),
+        }
+
+        for var, value in replacements.items():
+            path = path.replace(var, value)
+
+        return path
+
+
 class Grader:
-    def __init__(self, json_output=False):
+    def __init__(
+        self,
+        verbose=False,
+        json_output=False,
+        dry_run=False,
+        no_check=False,
+        generate_vscode=False,
+        vscode_no_merge=False,
+    ):
         self.config = Config(Path.cwd())
+        self.verbose = verbose
         self.json_output = json_output
+        self.dry_run = dry_run
+        self.no_check = no_check
+        self.generate_vscode = generate_vscode
+        self.vscode_no_merge = vscode_no_merge
         self.console = Console(quiet=json_output)
-        self.runner = TestRunner(self.config, self.console)
+        self.runner = TestRunner(
+            self.config,
+            self.console,
+            verbose=self.verbose,
+            dry_run=self.dry_run,
+            no_check=self.no_check,
+        )
         self.formatter = (
             JsonFormatter() if json_output else TableFormatter(self.console)
         )
         self.results: Dict[str, TestResult] = {}
+        self.vscode_generator = VSCodeConfigGenerator(Path.cwd(), self.config)
 
     def _save_test_history(
         self,
@@ -941,6 +1243,65 @@ class Grader:
                     f"[yellow]Warning:[/yellow] Failed to save test history: {str(e)}"
                 )
 
+    def _print_debug_instructions(
+        self, test_case: TestCase, failed_step: Dict[str, Any]
+    ) -> None:
+        """Print instructions for debugging the failed test case"""
+        if self.json_output:
+            return
+
+        debug_type = (
+            failed_step.get("debug", {}).get("type")
+            or test_case.meta.get("debug", {}).get("type")
+            or self.config.debug_config["default_type"]
+        )
+
+        self.console.print("\n[bold]Debug Instructions:[/bold]")
+        self.console.print("1. VS Code configurations have been generated/updated:")
+        self.console.print("   - .vscode/launch.json: Debug configurations")
+        self.console.print("   - .vscode/tasks.json: Build tasks")
+        self.console.print("\n2. To debug the failed step:")
+        self.console.print("   a. Open VS Code in the project root directory")
+        self.console.print("   b. Install required extensions:")
+        if debug_type in ["gdb", "lldb"]:
+            self.console.print("      - C/C++: ms-vscode.cpptools")
+        elif debug_type == "python":
+            self.console.print("      - Python: ms-python.python")
+        self.console.print("   c. Press F5 or use the Run and Debug view")
+        self.console.print(
+            "   d. Select the auto-generated configuration for this test"
+        )
+        self.console.print("\n3. Debug features available:")
+        self.console.print("   - Set breakpoints (F9)")
+        self.console.print("   - Step over (F10)")
+        self.console.print("   - Step into (F11)")
+        self.console.print("   - Step out (Shift+F11)")
+        self.console.print("   - Continue (F5)")
+        self.console.print("   - Inspect variables in the Variables view")
+        self.console.print("   - Use Debug Console for expressions")
+        self.console.print(
+            "\nNote: The test will be automatically rebuilt before debugging starts"
+        )
+
+    def _handle_test_failure(self, test_case: TestCase, result: TestResult) -> None:
+        """Handle test case failure, including VS Code configuration generation"""
+        if not self.generate_vscode or not result.error_details:
+            return
+
+        failed_step_index = result.error_details["step"]
+        failed_step = test_case.run_steps[failed_step_index - 1]
+
+        try:
+            self.vscode_generator.generate_configs(
+                test_case, failed_step, merge=not self.vscode_no_merge
+            )
+            self._print_debug_instructions(test_case, failed_step)
+        except Exception as e:
+            if not self.json_output:
+                self.console.print(
+                    f"\n[red]Failed to generate VS Code configurations:[/red] {str(e)}"
+                )
+
     def run_all_tests(
         self,
         specific_test: Optional[str] = None,
@@ -956,8 +1317,11 @@ class Grader:
                 specific_test, prefix_match, group, specific_paths
             )
             if not self.json_output:
-                # 如果是组测试，显示完整的组名
-                if group and test_cases:
+                if self.dry_run:
+                    self.console.print(
+                        "\n[bold]Dry-run mode enabled. Only showing commands.[/bold]\n"
+                    )
+                elif group and test_cases:
                     matched_group = next(
                         g
                         for g in self.config.groups
@@ -978,6 +1342,8 @@ class Grader:
             for test in test_cases:
                 try:
                     result = self.runner.run_test(test)
+                    if not result.success:
+                        self._handle_test_failure(test, result)
                 except Exception as e:
                     if not self.json_output:
                         self.console.print(
@@ -1006,12 +1372,14 @@ class Grader:
                 total_score += result.score
                 max_score += result.max_score
 
-            self.formatter.format_results(
-                test_cases, test_results, total_score, max_score
-            )
+            if not self.dry_run:
+                self.formatter.format_results(
+                    test_cases, test_results, total_score, max_score
+                )
 
-            # 保存测试历史
-            self._save_test_history(test_cases, test_results, total_score, max_score)
+                self._save_test_history(
+                    test_cases, test_results, total_score, max_score
+                )
 
             return total_score, max_score
 
@@ -1354,6 +1722,28 @@ def main():
         choices=["bash", "zsh", "fish"],
         help="Manually specify shell type for environment variable commands",
     )
+    parser.add_argument(
+        "-d",
+        "--dry-run",
+        action="store_true",
+        help="Only show commands that would be executed (only works with single test case)",
+    )
+    parser.add_argument(
+        "-n",
+        "--no-check",
+        action="store_true",
+        help="Run test cases without performing checks specified in config",
+    )
+    parser.add_argument(
+        "--vscode",
+        action="store_true",
+        help="Generate VS Code debug configurations for failed test cases",
+    )
+    parser.add_argument(
+        "--vscode-no-merge",
+        action="store_true",
+        help="Overwrite existing VS Code configurations instead of merging",
+    )
     parser.add_argument("test", nargs="?", help="Specific test to run")
     args = parser.parse_args()
 
@@ -1479,12 +1869,29 @@ def main():
                 print(f"Error reading test history: {str(e)}", file=sys.stderr)
                 sys.exit(1)
 
-        grader = Grader(json_output=args.json)
-        # 更新TestRunner的初始化
-        grader.runner = TestRunner(grader.config, grader.console, verbose=args.verbose)
+        # 检查dry-run模式是否与单个测试点一起使用
+        if args.dry_run and not args.test:
+            print(
+                "Error: --dry-run can only be used with a single test case",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+
+        grader = Grader(
+            json_output=args.json,
+            dry_run=args.dry_run,
+            no_check=args.no_check,
+            verbose=args.verbose,
+            generate_vscode=args.vscode,
+            vscode_no_merge=args.vscode_no_merge,
+        )
         total_score, max_score = grader.run_all_tests(
             args.test, prefix_match=args.prefix, group=args.group
         )
+
+        # 如果是dry-run模式，直接退出
+        if args.dry_run:
+            sys.exit(0)
 
         percentage = (total_score / max_score * 100) if max_score > 0 else 0
 
