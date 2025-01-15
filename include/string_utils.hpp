@@ -65,3 +65,9 @@ inline bool starts_with(std::string_view s, std::string_view prefix)
 {
     return s.find(prefix) == 0;
 }
+
+// 检查字符串是否包含子串
+inline constexpr bool str_contains(std::string_view str, std::string_view sub)
+{
+    return str.find(sub) != std::string_view::npos;
+}

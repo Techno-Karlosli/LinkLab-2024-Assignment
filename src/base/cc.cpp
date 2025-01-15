@@ -1,6 +1,7 @@
 #define FMT_HEADER_ONLY
 #include "fle.hpp"
 #include "string_utils.hpp"
+#include "utils.hpp"
 #include <algorithm>
 #include <cstddef>
 #include <filesystem>
@@ -14,36 +15,6 @@ using namespace std::string_literals;
 using namespace std::string_view_literals;
 
 namespace {
-
-// 检查字符串是否包含子串
-constexpr bool str_contains(std::string_view str, std::string_view sub)
-{
-    return str.find(sub) != std::string_view::npos;
-}
-
-// 检查容器是否包含元素
-template <typename Container, typename T>
-constexpr bool contains(const Container& container, const T& value)
-{
-    return std::find(std::begin(container), std::end(container), value) != std::end(container);
-}
-
-// 执行系统命令并返回输出结果
-std::string execute_command(std::string_view cmd)
-{
-    auto command_with_stderr = fmt::format("{} 2>/dev/null", cmd);
-    if (FILE* pipe = popen(command_with_stderr.c_str(), "r")) {
-        std::string result;
-        std::array<char, 128> buffer;
-        while (size_t bytes_read = fread(buffer.data(), 1, buffer.size(), pipe)) {
-            result.append(buffer.data(), bytes_read);
-        }
-        pclose(pipe);
-        return result;
-    }
-    throw std::runtime_error("popen() failed!");
-}
-
 // 符号表项结构
 struct Symbol {
     char binding;

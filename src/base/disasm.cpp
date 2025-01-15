@@ -1,44 +1,15 @@
 #include "fle.hpp"
-#include <array>
+#include "string_utils.hpp"
+#include "utils.hpp"
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
 #include <map>
-#include <memory>
 #include <sstream>
 #include <stdexcept>
 #include <string>
-
-// 辅助函数：执行命令并获取输出
-std::string exec_command(const std::string& cmd)
-{
-    std::array<char, 128> buffer;
-    std::string result;
-    using pclose_fn = int (*)(FILE*);
-    std::unique_ptr<FILE, pclose_fn> pipe(popen(cmd.c_str(), "r"), pclose);
-
-    if (!pipe) {
-        throw std::runtime_error("Failed to execute command: " + cmd);
-    }
-
-    while (fgets(buffer.data(), buffer.size(), pipe.get()) != nullptr) {
-        result += buffer.data();
-    }
-
-    return result;
-}
-
-// 辅助函数：去除字符串前后的空白字符
-std::string trim(const std::string& str)
-{
-    size_t first = str.find_first_not_of(" \t\n\r");
-    if (first == std::string::npos)
-        return "";
-    size_t last = str.find_last_not_of(" \t\n\r");
-    return str.substr(first, last - first + 1);
-}
 
 // 辅助函数：格式化地址
 std::string format_address(uint64_t addr)
@@ -226,7 +197,7 @@ void FLE_disasm(const FLEObject& obj, const std::string& section_name)
     cmd << "objdump -D -b binary -m i386:x86-64 " << temp_file;
 
     try {
-        std::string output = exec_command(cmd.str());
+        std::string output = execute_command(cmd.str());
 
         std::istringstream iss(output);
         std::string line;
