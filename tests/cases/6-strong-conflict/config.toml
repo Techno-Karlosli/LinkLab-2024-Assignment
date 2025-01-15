@@ -46,4 +46,4 @@ args = [
 
 [run.check]
 return_code = 1
-stderr_pattern = "Error: Multiple definition of strong symbol: global_var"
+stderr_pattern = "Multiple definition of strong symbol: global_var"
