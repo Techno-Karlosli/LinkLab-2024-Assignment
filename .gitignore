@@ -19,4 +19,5 @@ readelf
 **/*.fle
 
 .autograder_result
+.last_cxxflags
 .test_history
