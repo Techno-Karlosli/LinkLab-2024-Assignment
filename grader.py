@@ -964,7 +964,7 @@ class VSCodeConfigGenerator:
             tasks_config.extend(self._generate_tasks_config(test_case))
 
         launch_config = {"version": "0.2.0", "configurations": launch_config}
-        tasks_config = {"version": "0.2.0", "tasks": tasks_config}
+        tasks_config = {"version": "2.0.0", "tasks": tasks_config}
 
         self._write_or_merge_json(
             self.launch_file, launch_config, "configurations", merge
