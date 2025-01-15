@@ -118,7 +118,7 @@ class TestResult:
     score: float
     max_score: float
     step_scores: List[Tuple[str, float, float]] = None
-    error_details: Optional[Dict[str, Any]] = None
+    error_details: Optional[List[Dict[str, Any]]] = None
 
     @property
     def status(self) -> str:
@@ -452,36 +452,37 @@ class TestRunner:
 
                 # 如果测试失败，在进度显示完成后输出失败信息
                 if not result.success and not self.dry_run:
-                    # 获取失败的步骤信息
-                    step_index = result.error_details["step"]
+                    for error_details in result.error_details:
+                        # 获取失败的步骤信息
+                        step_index = error_details["step"]
 
-                    self.console.print(
-                        f"\n[red]Test '{test.meta['name']}' failed at step {step_index}:[/red]"
-                    )
-                    self.console.print(f"Command: {result.error_details['command']}")
-
-                    if "stdout" in result.error_details:
-                        self.console.print("\nActual output:")
-                        self.console.print(result.error_details["stdout"].strip())
-
-                    if "stderr" in result.error_details:
-                        self.console.print("\nError output:")
-                        self.console.print(result.error_details["stderr"].strip())
-
-                    if "expected_output" in result.error_details:
-                        self.console.print("\nExpected output:")
-                        self.console.print(result.error_details["expected_output"])
-
-                    if "error_message" in result.error_details:
-                        self.console.print("\nError details:")
-                        self.console.print(f"  {result.error_details['error_message']}")
-
-                    if "return_code" in result.error_details:
                         self.console.print(
-                            f"\nReturn code: {result.error_details['return_code']}"
+                            f"\n[red]Test '{test.meta['name']}' failed at step {step_index}:[/red]"
                         )
+                        self.console.print(f"Command: {error_details['command']}")
 
-                    self.console.print()  # 添加一个空行作为分隔
+                        if "stdout" in error_details:
+                            self.console.print("\nActual output:")
+                            self.console.print(error_details["stdout"].strip())
+
+                        if "stderr" in error_details:
+                            self.console.print("\nError output:")
+                            self.console.print(error_details["stderr"].strip())
+
+                        if "expected_output" in error_details:
+                            self.console.print("\nExpected output:")
+                            self.console.print(error_details["expected_output"])
+
+                        if "error_message" in error_details:
+                            self.console.print("\nError details:")
+                            self.console.print(f"  {error_details['error_message']}")
+
+                        if "return_code" in error_details:
+                            self.console.print(
+                                f"\nReturn code: {error_details['return_code']}"
+                            )
+
+                        self.console.print()  # 添加一个空行作为分隔
                 return result
             else:
                 # 在非 rich 环境下直接执行
@@ -538,7 +539,16 @@ class TestRunner:
                 if progress is not None and task is not None:
                     progress.update(task, completed=i)
                 if step.get("must_pass", True):
-                    return result
+                    # 返回包含所有已收集的错误详情的结果
+                    return TestResult(
+                        success=False,
+                        message=result.message,
+                        time=time.perf_counter() - start_time,
+                        score=total_score,
+                        max_score=max_possible_score,
+                        step_scores=step_scores,
+                        error_details=steps_error_details,
+                    )
             total_score += result.score
             if result.step_scores:
                 step_scores.extend(result.step_scores)
@@ -565,7 +575,7 @@ class TestRunner:
             score=total_score,
             max_score=max_possible_score,
             step_scores=step_scores,
-            error_details=steps_error_details[0] if steps_error_details else None,
+            error_details=steps_error_details if steps_error_details else None,
         )
 
     def _execute_single_step(
@@ -941,24 +951,30 @@ class VSCodeConfigGenerator:
         self.tasks_file = self.vscode_dir / "tasks.json"
 
     def generate_configs(
-        self, test_case: TestCase, failed_step: Dict[str, Any], merge: bool = True
+        self, failed_steps: List[Tuple[TestCase, Dict[str, Any]]], merge: bool = True
     ) -> None:
         """Generate VS Code configurations for debugging a failed test step"""
         self.vscode_dir.mkdir(exist_ok=True)
 
-        # Generate or update launch.json
-        launch_config = self._generate_launch_config(test_case, failed_step)
+        launch_config = []
+        tasks_config = []
+
+        for test_case, failed_step in failed_steps:
+            launch_config.extend(self._generate_launch_config(test_case, failed_step))
+            tasks_config.extend(self._generate_tasks_config(test_case))
+
+        launch_config = {"version": "0.2.0", "configurations": launch_config}
+        tasks_config = {"version": "0.2.0", "tasks": tasks_config}
+
         self._write_or_merge_json(
             self.launch_file, launch_config, "configurations", merge
         )
 
-        # Generate or update tasks.json
-        tasks_config = self._generate_tasks_config(test_case)
         self._write_or_merge_json(self.tasks_file, tasks_config, "tasks", merge)
 
     def _generate_launch_config(
         self, test_case: TestCase, failed_step: Dict[str, Any]
-    ) -> Dict[str, Any]:
+    ) -> List[Dict[str, Any]]:
         """Generate launch configuration based on debug type"""
         debug_type = (
             failed_step.get("debug", {}).get("type")
@@ -1017,43 +1033,38 @@ class VSCodeConfigGenerator:
                 }
             )
 
-            return {"configurations": configs}
+            return configs
         elif debug_type == "python":
-            return {
-                "configurations": [
-                    {
-                        "name": f"Debug {test_case.meta['name']} - Step {failed_step.get('name', 'failed step')}",
-                        "type": "python",
-                        "request": "launch",
-                        "program": program,
-                        "args": args,
-                        "cwd": cwd,
-                        "env": {},
-                        "console": "integratedTerminal",
-                        "justMyCode": False,
-                        "preLaunchTask": f"build-{test_case.path.name}",
-                    }
-                ]
-            }
+            return [
+                {
+                    "name": f"Debug {test_case.meta['name']} - Step {failed_step.get('name', 'failed step')}",
+                    "type": "python",
+                    "request": "launch",
+                    "program": program,
+                    "args": args,
+                    "cwd": cwd,
+                    "env": {},
+                    "console": "integratedTerminal",
+                    "justMyCode": False,
+                    "preLaunchTask": f"build-{test_case.path.name}",
+                }
+            ]
         else:
             raise ValueError(f"Unsupported debug type: {debug_type}")
 
     def _generate_tasks_config(self, test_case: TestCase) -> Dict[str, Any]:
         """Generate tasks configuration for building the test case"""
-        return {
-            "version": "2.0.0",
-            "tasks": [
-                {
-                    "label": f"build-{test_case.path.name}",
-                    "type": "shell",
-                    "command": "python3",
-                    "args": ["grader.py", "--no-check", test_case.path.name],
-                    "group": {"kind": "build", "isDefault": True},
-                    "presentation": {"panel": "shared"},
-                    "options": {"env": {"DEBUG": "1"}},
-                }
-            ],
-        }
+        return [
+            {
+                "label": f"build-{test_case.path.name}",
+                "type": "shell",
+                "command": "python3",
+                "args": ["grader.py", "--no-check", test_case.path.name],
+                "group": {"kind": "build", "isDefault": True},
+                "presentation": {"panel": "shared"},
+                "options": {"env": {"DEBUG": "1"}},
+            }
+        ]
 
     def _write_or_merge_json(
         self,
@@ -1062,7 +1073,7 @@ class VSCodeConfigGenerator:
         merge_key: str,
         should_merge: bool,
     ) -> None:
-        """Write or merge JSON configuration file"""
+        """Write or merge JSON configuration file, overriding items with the same name."""
         # Add comment to mark auto-generated configurations
         if merge_key == "configurations":
             for config in new_config[merge_key]:
@@ -1079,28 +1090,23 @@ class VSCodeConfigGenerator:
 
                 # Merge configurations
                 if merge_key in existing_config:
-                    # Remove previous auto-generated configs and configs with same name
-                    existing_items = []
-                    new_names = {
+                    # Create a dictionary to map names to their items for quick lookup
+                    existing_items_map = {
                         item[
                             "name" if merge_key == "configurations" else "label"
-                        ].replace(" [Auto-generated]", "")
-                        for item in new_config[merge_key]
+                        ].replace(" [Auto-generated]", ""): item
+                        for item in existing_config[merge_key]
                     }
 
-                    for item in existing_config[merge_key]:
-                        item_name = item[
+                    # Update existing items or add new items
+                    for new_item in new_config[merge_key]:
+                        item_key = new_item[
                             "name" if merge_key == "configurations" else "label"
                         ].replace(" [Auto-generated]", "")
-                        if (
-                            item_name not in new_names
-                            and not item.get("name", "").endswith("[Auto-generated]")
-                            and not item.get("label", "").endswith("[Auto-generated]")
-                        ):
-                            existing_items.append(item)
+                        existing_items_map[item_key] = new_item
 
-                    existing_config[merge_key] = existing_items
-                    existing_config[merge_key].extend(new_config[merge_key])
+                    # Rebuild the list from the updated map
+                    existing_config[merge_key] = list(existing_items_map.values())
                 else:
                     existing_config[merge_key] = new_config[merge_key]
 
@@ -1197,7 +1203,7 @@ class Grader:
 
             # 如果测试失败，添加详细的错误信息
             if not result["success"] and result["error_details"]:
-                error_details = result["error_details"]
+                error_details = result["error_details"][0]
                 test_data["error_details"] = {
                     "step": error_details["step"],
                     "step_name": error_details["step_name"],
@@ -1283,19 +1289,54 @@ class Grader:
             "\nNote: The test will be automatically rebuilt before debugging starts"
         )
 
-    def _handle_test_failure(self, test_case: TestCase, result: TestResult) -> None:
-        """Handle test case failure, including VS Code configuration generation"""
-        if not self.generate_vscode or not result.error_details:
+    def _collect_failed_steps(
+        self,
+    ) -> List[Tuple[TestCase, Dict[str, Any], Dict[str, Any]]]:
+        """收集所有失败的测试步骤"""
+        failed_steps = []
+        for test_name, result in self.results.items():
+            if not result.success and result.error_details:
+                test_case = next(
+                    test
+                    for test in self._load_test_cases()
+                    if test.path.name == test_name
+                )
+                # 处理所有失败步骤的错误信息
+                error_details_list = (
+                    result.error_details
+                    if isinstance(result.error_details, list)
+                    else [result.error_details]
+                )
+                for error_details in error_details_list:
+                    step_index = error_details["step"]
+                    failed_step = test_case.run_steps[step_index - 1]
+                    failed_steps.append((test_case, failed_step, error_details))
+        return failed_steps
+
+    def _generate_debug_configs(self) -> None:
+        """为所有失败的测试步骤生成调试配置"""
+        if not self.generate_vscode:
             return
 
-        failed_step_index = result.error_details["step"]
-        failed_step = test_case.run_steps[failed_step_index - 1]
+        failed_steps = self._collect_failed_steps()
+        if not failed_steps:
+            return
 
         try:
             self.vscode_generator.generate_configs(
-                test_case, failed_step, merge=not self.vscode_no_merge
+                [
+                    (test_case, failed_step)
+                    for test_case, failed_step, _ in failed_steps
+                ],
+                merge=not self.vscode_no_merge,
             )
-            self._print_debug_instructions(test_case, failed_step)
+
+            if not self.json_output and failed_steps:
+                self._print_debug_instructions(failed_steps[0][0], failed_steps[0][1])
+                if len(failed_steps) > 1:
+                    self.console.print(
+                        f"\n[yellow]Note:[/yellow] Debug configurations have been generated for {len(failed_steps)} failed steps."
+                    )
         except Exception as e:
             if not self.json_output:
                 self.console.print(
@@ -1342,8 +1383,6 @@ class Grader:
             for test in test_cases:
                 try:
                     result = self.runner.run_test(test)
-                    if not result.success:
-                        self._handle_test_failure(test, result)
                 except Exception as e:
                     if not self.json_output:
                         self.console.print(
@@ -1381,9 +1420,14 @@ class Grader:
                     test_cases, test_results, total_score, max_score
                 )
 
+                # 在所有测试完成后生成调试配置
+                self._generate_debug_configs()
+
             return total_score, max_score
 
         except Exception as e:
+            print(e)
+            print(traceback.format_exc())
             if not self.json_output:
                 self.console.print(f"[red]Error:[/red] Grader script error: {str(e)}")
             else:
