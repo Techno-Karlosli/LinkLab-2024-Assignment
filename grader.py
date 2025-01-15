@@ -1468,15 +1468,46 @@ class Grader:
             sys.exit(1)
 
     def _run_setup_steps(self) -> bool:
-        for step in self.config.setup_steps:
-            if not self._run_setup_step(step):
-                return False
-        return True
+        if not self.config.setup_steps:
+            return True
+
+        if self.console and not isinstance(self.console, type):
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[progress.description]{task.description}"),
+                console=self.console,
+            ) as progress:
+                total_steps = len(self.config.setup_steps)
+                task = progress.add_task(
+                    f"Running setup steps [0/{total_steps}]...",
+                    total=total_steps,
+                )
+
+                for i, step in enumerate(self.config.setup_steps, 1):
+                    step_name = step.get("message", "Setup step")
+                    progress.update(
+                        task,
+                        description=f"Running setup steps [{i}/{total_steps}]: {step_name}",
+                        completed=i - 1,
+                    )
+
+                    if not self._run_setup_step(step):
+                        progress.update(task, completed=total_steps)
+                        return False
+
+                    progress.update(
+                        task,
+                        description=f"Running setup steps [{i}/{total_steps}]: {step_name}",
+                        completed=i,
+                    )
+                return True
+        else:
+            for step in self.config.setup_steps:
+                if not self._run_setup_step(step):
+                    return False
+            return True
 
     def _run_setup_step(self, step: Dict[str, Any]) -> bool:
-        if not self.json_output and "message" in step:
-            self.console.print(f"[bold]{step['message']}[/bold]")
-
         try:
             if step["type"] != "command":
                 if not self.json_output:
@@ -1506,8 +1537,6 @@ class Grader:
                     self.console.print(process.stderr)
                 return False
 
-            if not self.json_output and "success_message" in step:
-                self.console.print(f"[green]✓[/green] {step['success_message']}")
             return True
 
         except Exception as e:
