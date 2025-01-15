@@ -23,8 +23,10 @@ void FLE_objdump(const FLEObject& obj, FLEWriter& writer)
     }
 
     std::vector<std::tuple<std::string, size_t, FLESection>> sections;
-    for (const auto& [name, section] : obj.sections) {
-        auto shdr = std::find_if(obj.shdrs.begin(), obj.shdrs.end(), [name](const auto& shdr) {
+    for (const auto& pair : obj.sections) {
+        const auto& name = pair.first;
+        const auto& section = pair.second;
+        auto shdr = std::find_if(obj.shdrs.begin(), obj.shdrs.end(), [&](const auto& shdr) {
             return shdr.name == name;
         });
         if (shdr == obj.shdrs.end()) {
