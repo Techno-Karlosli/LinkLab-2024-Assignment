@@ -2,6 +2,7 @@
 #include "string_utils.hpp"
 #include <csignal>
 #include <cstdint>
+#include <cstdio>
 #include <execinfo.h>
 #include <fstream>
 #include <iostream>
@@ -10,17 +11,20 @@
 #include <unordered_map>
 #include <vector>
 
+
 using namespace std::string_literals;
 
 void segv_handler(int sig, siginfo_t* si, void* ctx)
 {
+    fprintf(stderr, "Caught SIGSEGV at address: %p\n", si->si_addr);
+    fflush(stderr);
+    fprintf(stderr, "Error code: %d\n", si->si_code);
+    fflush(stderr);
+
     auto uctx = reinterpret_cast<ucontext_t*>(ctx);
 
     // 发生段错误的指令地址
     auto rip = uctx->uc_mcontext.gregs[REG_RIP];
-
-    // 出错访问的地址
-    void* fault_addr = si->si_addr;
 
     // call 指令前，会先往栈里压入返回地址，RSP 指向栈顶。
     // 这里尝试从栈顶读取 8 字节（对于 x86_64）当作返回地址
@@ -33,10 +37,6 @@ void segv_handler(int sig, siginfo_t* si, void* ctx)
         call_site_next = reinterpret_cast<void*>(*reinterpret_cast<uint64_t*>(rsp));
     }
 
-    fprintf(stderr, "Caught SIGSEGV at address: %p\n", fault_addr);
-    fflush(stderr);
-    fprintf(stderr, "Error code: %d\n", si->si_code);
-    fflush(stderr);
     fprintf(stderr, "Instruction at: %p\n", reinterpret_cast<void*>(rip));
     fflush(stderr);
     // call_site_next 是 call 指令推入的“返回地址”，即 call 指令自身之后的那条指令地址
@@ -237,6 +237,15 @@ FLEObject load_fle(const std::string& file)
 
 int main(int argc, char* argv[])
 {
+    // singlestack
+    constexpr size_t SIGSTACK_BUFFER_SIZE = 1024 * 1024;
+    uint8_t sigstack_buffer[SIGSTACK_BUFFER_SIZE];
+    stack_t sigstack;
+    sigstack.ss_sp = sigstack_buffer;
+    sigstack.ss_size = sizeof(sigstack_buffer);
+    sigstack.ss_flags = 0;
+    sigaltstack(&sigstack, NULL);
+
     struct sigaction sa;
     sa.sa_flags = SA_SIGINFO | SA_ONSTACK;
     sa.sa_sigaction = segv_handler;
