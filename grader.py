@@ -337,7 +337,7 @@ class PatternChecker:
             if not re.search(check["stdout_pattern"], output, re.MULTILINE):
                 return (
                     False,
-                    f"Output does not match pattern {check['stdout_pattern']}",
+                    f"Output does not match pattern {check['stdout_pattern']!r}",
                     None,
                 )
 
@@ -345,7 +345,7 @@ class PatternChecker:
             if not re.search(check["stderr_pattern"], error, re.MULTILINE):
                 return (
                     False,
-                    f"Error output does not match pattern {check['stderr_pattern']}",
+                    f"Error output does not match pattern {check['stderr_pattern']!r}",
                     None,
                 )
 
