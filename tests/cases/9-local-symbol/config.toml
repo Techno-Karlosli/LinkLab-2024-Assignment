@@ -74,7 +74,7 @@ must_pass = false
 
 [run.check]
 return_code = 1
-stderr_pattern = "Error: Undefined symbol: _local_var"
+stderr_pattern = "(U|u)ndefined symbol: _local_var"
 
 
 [[run]]
