@@ -528,10 +528,7 @@ Relocation {
 > [!TIP]
 > Start simple, move fast!
 >
-> 在实现过程中，你可以先处理只有一个输入文件的简单情形。使用 `readfle` 工具检查输出文件的格式是否正确并打印调试信息（比如节的合并过程、符号的新地址、重定位的处理过程）也会对调试很有帮助。
-
-> [!TIP]
-> `readfle` 工具可以帮助你检查 FLE 文件的内容。执行 `./readfle input.fle` 会显示文件的基本信息（类型、节表、符号表、重定位表等）。在调试链接过程时，你可以分别查看输入文件和输出文件的内容，验证链接是否正确。比如检查符号的偏移量是否正确更新，重定位项是否被正确处理等。
+> 在实现过程中，你可以先处理只有一个输入文件的简单情形。使用 `readfle` 工具检查输出文件的格式是否正确并打印调试信息（比如节的合并过程、符号的新地址、重定位的处理过程）也会对调试很有帮助。参见[调试指南](https://github.com/RUCICS/LinkLab-2024-Assignment/wiki/%E8%B0%83%E8%AF%95%E6%8C%87%E5%8D%97#%E5%9F%BA%E7%A1%80%E5%B7%A5%E5%85%B7)。
 
 完成后，你的链接器就能处理基本的链接任务了。运行测试来验证：
 
@@ -1073,24 +1070,7 @@ $$
 
 ## 调试建议
 
-1. 仔细阅读 `include/fle.hpp` 中的数据结构定义
-2. 使用 `readfle` 工具查看 FLE 格式文件的内容
-3. 测试用例提供了很好的参考实例
-4. 链接器的调试技巧：
-   - 使用 `objdump` 查看生成的文件
-   - 打印中间过程的重要信息
-   - 分步骤实现，先确保基本功能正确
-
-### 手动测试
-每个测试用例目录下都有 `config.toml` 文件描述了测试的执行步骤。当你运行 `make test` 或 `make test_<n>`，发现某个测试点未通过时，你可以：
-
-1. 设置 `TEST_BUILD` 环境变量，来表示最近一次测试中第一个失败的测试点的测试路径：`eval "$(python3 grader.py -l)"`；如果使用 fish shell，则需要使用 `python3 grader.py -l | source`
-2. 对这个失败的测试点，重新运行你的链接器：`./ld ${TEST_BUILD}/a.fle ${TEST_BUILD}/b.fle -o ${TEST_BUILD}/out.fle`
-3. 使用 `readfle` 和 `disasm` 检查输出文件：`./readfle ${TEST_BUILD}/out.fle` 和 `./disasm ${TEST_BUILD}/out.fle <section>`
-
-这样可以更方便地调试单个测试用例。完整的测试流程可以参考对应测试目录下的 `config.toml` 文件。
-
-你可以使用 `make retest` 来重新运行最近一次测试中所有失败的测试点。
+你可以阅读[调试指南](https://github.com/RUCICS/LinkLab-2024-Assignment/wiki/%E8%B0%83%E8%AF%95%E6%8C%87%E5%8D%97)，了解如何使用评测脚本和 VSCode 调试。
 
 ## 进阶内容
 
