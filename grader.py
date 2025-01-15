@@ -2,6 +2,7 @@ import argparse
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import time
@@ -50,6 +51,7 @@ def ensure_venv():
     python_path = (
         venv_dir / ("Scripts" if sys.platform == "win32" else "bin") / "python"
     )
+    pip_path = venv_dir / ("Scripts" if sys.platform == "win32" else "bin") / "pip"
 
     # 检查是否已在虚拟环境中运行
     if os.environ.get("VIRTUAL_ENV"):
@@ -73,10 +75,13 @@ def ensure_venv():
 
     try:
         # 如果存在虚拟环境，直接使用
-        if venv_dir.exists() and python_path.exists():
+        if venv_dir.exists() and python_path.exists() and pip_path.exists():
             pass
         else:
             # 创建新的虚拟环境
+            if venv_dir.exists():
+                shutil.rmtree(venv_dir)
+
             create_venv(venv_dir)
             install_requirements(venv_dir)
 
@@ -92,8 +97,6 @@ def ensure_venv():
         print(f"Error setting up virtual environment: {str(e)}", file=sys.stderr)
         # 如果虚拟环境创建失败，清理现有的虚拟环境
         if venv_dir.exists():
-            import shutil
-
             shutil.rmtree(venv_dir)
         sys.exit(1)
 
@@ -681,17 +684,35 @@ class TestRunner:
 
         return self._create_success_result(test, step, score, start_time)
 
+    def _resolve_relative_path(self, path: str, cwd: Path = os.getcwd()) -> str:
+        result = path
+        if isinstance(path, Path):
+            result = str(path.resolve())
+
+        try:
+            result = str(path.relative_to(cwd, walk_up=True))
+        except:
+            try:
+                result = str(path.relative_to(cwd))
+            except:
+                result = str(path)
+
+        if len(result) > len(str(path)):
+            result = str(path)
+
+        return result
+
     def _resolve_path(self, path: str, test_dir: Path, cwd: Path = os.getcwd()) -> str:
         build_dir = test_dir / "build"
         build_dir.mkdir(exist_ok=True)
 
         replacements = {
-            "${test_dir}": str(test_dir.relative_to(cwd, walk_up=True)),
-            "${common_dir}": str(
-                self.config.paths["common_dir"].relative_to(cwd, walk_up=True)
+            "${test_dir}": self._resolve_relative_path(test_dir, cwd),
+            "${common_dir}": self._resolve_relative_path(
+                self.config.paths["common_dir"], cwd
             ),
-            "${root_dir}": str(self.config.project_root.relative_to(cwd, walk_up=True)),
-            "${build_dir}": str(build_dir.relative_to(cwd, walk_up=True)),
+            "${root_dir}": self._resolve_relative_path(self.config.project_root, cwd),
+            "${build_dir}": self._resolve_relative_path(build_dir, cwd),
         }
 
         for var, value in replacements.items():
@@ -1119,17 +1140,35 @@ class VSCodeConfigGenerator:
         with open(file_path, "w") as f:
             json.dump(config_to_write, f, indent=4)
 
+    def _resolve_relative_path(self, path: str, cwd: Path = os.getcwd()) -> str:
+        result = path
+        if isinstance(path, Path):
+            result = str(path.resolve())
+
+        try:
+            result = str(path.relative_to(cwd, walk_up=True))
+        except:
+            try:
+                result = str(path.relative_to(cwd))
+            except:
+                result = str(path)
+
+        if len(result) > len(str(path)):
+            result = str(path)
+
+        return result
+
     def _resolve_path(self, path: str, test_dir: Path, cwd: Path = os.getcwd()) -> str:
         build_dir = test_dir / "build"
         build_dir.mkdir(exist_ok=True)
 
         replacements = {
-            "${test_dir}": str(test_dir.relative_to(cwd, walk_up=True)),
-            "${common_dir}": str(
-                self.config.paths["common_dir"].relative_to(cwd, walk_up=True)
+            "${test_dir}": self._resolve_relative_path(test_dir, cwd),
+            "${common_dir}": self._resolve_relative_path(
+                self.config.paths["common_dir"], cwd
             ),
-            "${root_dir}": str(self.config.project_root.relative_to(cwd, walk_up=True)),
-            "${build_dir}": str(build_dir.relative_to(cwd, walk_up=True)),
+            "${root_dir}": self._resolve_relative_path(self.config.project_root, cwd),
+            "${build_dir}": self._resolve_relative_path(build_dir, cwd),
         }
 
         for var, value in replacements.items():
