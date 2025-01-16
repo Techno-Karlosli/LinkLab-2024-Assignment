@@ -134,10 +134,11 @@ void FLE_objdump(const FLEObject& obj, FLEWriter& writer)
                 pos += chunk_size;
             }
 
-            // 4. 如果是重定位，跳过4字节
-            if (std::any_of(section.relocs.begin(), section.relocs.end(),
-                    [pos](const auto& r) { return r.offset == pos; })) {
-                pos += 4;
+            // 4. 如果是重定位，跳过字节
+            auto reloc_it = std::find_if(section.relocs.begin(), section.relocs.end(),
+                [pos](const auto& r) { return r.offset == pos; });
+            if (reloc_it != section.relocs.end()) {
+                pos += (reloc_it->type == RelocationType::R_X86_64_64) ? 8 : 4;
             }
         }
 

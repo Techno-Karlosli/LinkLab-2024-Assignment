@@ -1,4 +1,8 @@
 #pragma once
+
+#ifndef FLE_HPP
+#define FLE_HPP
+
 #include "nlohmann/json.hpp"
 #include <cstdint>
 #include <fstream>
@@ -230,3 +234,5 @@ void FLE_readfle(const FLEObject& obj);
  * 0004: 48 83 ec 10          sub     rsp, 0x10
  */
 void FLE_disasm(const FLEObject& obj, const std::string& section_name);
+
+#endif
