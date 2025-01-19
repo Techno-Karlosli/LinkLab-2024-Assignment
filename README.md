@@ -1103,8 +1103,9 @@ $$
 
 ## 参考资料
 
-1. [I Executable and Linkable Format (ELF)](https://www.cs.cmu.edu/afs/cs/academic/class/15213-f00/docs/elf.pdf)
-2. [CSAPP: Computer Systems A Programmer's Perspective](https://csapp.cs.cmu.edu/)
-3. [System V ABI](https://refspecs.linuxbase.org/elf/x86_64-abi-0.99.pdf)
-4. [Linkers & Loaders](https://linker.iecc.com/)
-5. [How To Write Shared Libraries](https://www.akkadia.org/drepper/dsohowto.pdf)
+1. [可执行文件和加载 - 操作系统（2025春）- jyy](https://jyywiki.cn/OS/2024/lect19.md)
+2. [I Executable and Linkable Format (ELF)](https://www.cs.cmu.edu/afs/cs/academic/class/15213-f00/docs/elf.pdf)
+3. [CSAPP: Computer Systems A Programmer's Perspective](https://csapp.cs.cmu.edu/)
+4. [System V ABI](https://refspecs.linuxbase.org/elf/x86_64-abi-0.99.pdf)
+5. [Linkers & Loaders](https://linker.iecc.com/)
+6. [How To Write Shared Libraries](https://www.akkadia.org/drepper/dsohowto.pdf)
