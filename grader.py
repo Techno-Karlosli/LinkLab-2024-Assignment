@@ -484,15 +484,6 @@ class TestRunner:
             else:
                 # 在非 rich 环境下直接执行
                 return self._execute_test_steps(test)
-
-        except subprocess.TimeoutExpired:
-            return TestResult(
-                success=False,
-                message="Timeout",
-                time=time.perf_counter() - start_time,
-                score=0,
-                max_score=test.meta["score"],
-            )
         except Exception as e:
             print(e)
             print(traceback.format_exc())
@@ -729,6 +720,16 @@ class TestRunner:
         self, test: TestCase, step: Dict[str, Any], step_index: int, start_time: float
     ) -> TestResult:
         error_message = f"Step {step_index} '{step.get('name', step['command'])}' timed out after {step.get('timeout', 5.0)}s"
+        # 构造命令字符串
+        cmd = [self._resolve_path(step["command"], test.path, os.getcwd())]
+        if "args" in step:
+            cmd.extend(
+                [
+                    self._resolve_path(str(arg), test.path, os.getcwd())
+                    for arg in step.get("args", [])
+                ]
+            )
+        command_str = " ".join(cmd)
         return TestResult(
             success=False,
             message=error_message,
@@ -739,6 +740,7 @@ class TestRunner:
                 "step": step_index,
                 "step_name": step.get("name", step["command"]),
                 "error_message": error_message,
+                "command": command_str,  # 添加实际运行的命令
             },
         )
 
@@ -1250,10 +1252,6 @@ class Grader:
                 if "return_code" in error_details:
                     test_data["error_details"]["return_code"] = error_details[
                         "return_code"
-                    ]
-                if "expected_output" in error_details:
-                    test_data["error_details"]["expected_output"] = error_details[
-                        "expected_output"
                     ]
 
             history_data["tests"].append(test_data)
